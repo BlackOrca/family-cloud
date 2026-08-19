@@ -2,7 +2,9 @@ using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using OurLive.Core.CalDav;
 using OurLive.Core.Data;
+using OurLive.Core.Sync;
 using OurLive.Server.Components;
 using OurLive.Server.Components.Account;
 
@@ -17,6 +19,9 @@ builder.Services.AddRazorComponents()
 builder.Services.AddCascadingAuthenticationState();
 builder.Services.AddScoped<IdentityRedirectManager>();
 builder.Services.AddScoped<AuthenticationStateProvider, IdentityRevalidatingAuthenticationStateProvider>();
+
+builder.Services.AddHttpClient<ICalDavClient, CalDavClient>();
+builder.Services.AddScoped<CalendarSyncService>();
 
 builder.Services.AddAuthentication(options =>
     {
