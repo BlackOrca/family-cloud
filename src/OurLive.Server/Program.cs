@@ -1,9 +1,10 @@
 using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using OurLive.Core.Data;
 using OurLive.Server.Components;
 using OurLive.Server.Components.Account;
-using OurLive.Server.Data;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -20,38 +21,79 @@ builder.Services.AddScoped<AuthenticationStateProvider, IdentityRevalidatingAuth
 builder.Services.AddAuthentication(options =>
     {
         options.DefaultScheme = IdentityConstants.ApplicationScheme;
-        options.DefaultSignInScheme = IdentityConstants.ExternalScheme;
     })
     .AddIdentityCookies();
 
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection") ?? throw new InvalidOperationException("Connection string 'DefaultConnection' not found.");
-builder.Services.AddDbContext<ApplicationDbContext>(options =>
+
+// SQLite creates the database file itself but not its parent directory (e.g. the repo-root
+// .data/ folder for local dev, or a not-yet-existing bind mount target).
+var dataSource = new SqliteConnectionStringBuilder(connectionString).DataSource;
+var dataDirectory = Path.GetDirectoryName(Path.GetFullPath(dataSource));
+if (dataDirectory is not null)
+{
+    Directory.CreateDirectory(dataDirectory);
+}
+
+builder.Services.AddDbContext<OurLiveDbContext>(options =>
     options.UseSqlite(connectionString));
 builder.Services.AddDatabaseDeveloperPageExceptionFilter();
 
-builder.Services.AddIdentityCore<ApplicationUser>(options =>
+builder.Services.AddIdentityCore<AppUser>(options =>
     {
         // No email flow: an admin creates accounts directly via the admin UI (Phase 3), so there's
-        // no one to confirm a registration and IdentityNoOpEmailSender never actually sends anything.
+        // no one to confirm a registration.
         options.SignIn.RequireConfirmedAccount = false;
         options.Stores.SchemaVersion = IdentitySchemaVersions.Version3;
     })
-    .AddEntityFrameworkStores<ApplicationDbContext>()
+    .AddRoles<IdentityRole<Guid>>()
+    .AddEntityFrameworkStores<OurLiveDbContext>()
     .AddSignInManager()
     .AddDefaultTokenProviders();
-
-builder.Services.AddSingleton<IEmailSender<ApplicationUser>, IdentityNoOpEmailSender>();
 
 var app = builder.Build();
 
 app.MapDefaultEndpoints();
 
-// Configure the HTTP request pipeline.
-if (app.Environment.IsDevelopment())
+// Apply pending migrations and seed the initial admin account (if none exists yet) on every
+// startup — cheap at household scale and means a fresh container just works.
+await using (var scope = app.Services.CreateAsyncScope())
 {
-    app.UseMigrationsEndPoint();
+    var db = scope.ServiceProvider.GetRequiredService<OurLiveDbContext>();
+    await db.Database.MigrateAsync();
+
+    var userManager = scope.ServiceProvider.GetRequiredService<UserManager<AppUser>>();
+    if (!await userManager.Users.AnyAsync())
+    {
+        var seedUserName = app.Configuration["SeedAdmin:UserName"];
+        var seedPassword = app.Configuration["SeedAdmin:Password"];
+        if (!string.IsNullOrWhiteSpace(seedUserName) && !string.IsNullOrWhiteSpace(seedPassword))
+        {
+            var admin = new AppUser
+            {
+                UserName = seedUserName,
+                DisplayName = "Admin",
+                CreatedUtc = DateTimeOffset.UtcNow,
+            };
+            var result = await userManager.CreateAsync(admin, seedPassword);
+            if (!result.Succeeded)
+            {
+                throw new InvalidOperationException(
+                    $"Failed to seed admin user: {string.Join(", ", result.Errors.Select(e => e.Description))}");
+            }
+            app.Logger.LogInformation("Seeded initial admin user {UserName}.", seedUserName);
+        }
+        else
+        {
+            app.Logger.LogWarning(
+                "No users exist and SeedAdmin:UserName/SeedAdmin:Password are not configured — " +
+                "no admin account was created. Set them via user-secrets (dev) or environment variables (Docker).");
+        }
+    }
 }
-else
+
+// Configure the HTTP request pipeline.
+if (!app.Environment.IsDevelopment())
 {
     app.UseExceptionHandler("/Error", createScopeForErrors: true);
 }

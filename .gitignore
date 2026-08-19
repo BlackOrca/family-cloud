@@ -65,6 +65,9 @@ project.lock.json
 project.fragment.lock.json
 artifacts/
 
+# our-live local dev SQLite database + Data Protection key ring
+.data/
+
 # Tye
 .tye/
 

@@ -3,10 +3,10 @@ using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
 
-namespace OurLive.Server.Migrations
+namespace OurLive.Core.Data.Migrations
 {
     /// <inheritdoc />
-    public partial class CreateIdentitySchema : Migration
+    public partial class InitialCreate : Migration
     {
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
@@ -15,7 +15,7 @@ namespace OurLive.Server.Migrations
                 name: "AspNetRoles",
                 columns: table => new
                 {
-                    Id = table.Column<string>(type: "TEXT", nullable: false),
+                    Id = table.Column<Guid>(type: "TEXT", nullable: false),
                     Name = table.Column<string>(type: "TEXT", maxLength: 256, nullable: true),
                     NormalizedName = table.Column<string>(type: "TEXT", maxLength: 256, nullable: true),
                     ConcurrencyStamp = table.Column<string>(type: "TEXT", nullable: true)
@@ -29,7 +29,9 @@ namespace OurLive.Server.Migrations
                 name: "AspNetUsers",
                 columns: table => new
                 {
-                    Id = table.Column<string>(type: "TEXT", nullable: false),
+                    Id = table.Column<Guid>(type: "TEXT", nullable: false),
+                    DisplayName = table.Column<string>(type: "TEXT", nullable: false),
+                    CreatedUtc = table.Column<DateTimeOffset>(type: "TEXT", nullable: false),
                     UserName = table.Column<string>(type: "TEXT", maxLength: 256, nullable: true),
                     NormalizedUserName = table.Column<string>(type: "TEXT", maxLength: 256, nullable: true),
                     Email = table.Column<string>(type: "TEXT", maxLength: 256, nullable: true),
@@ -51,12 +53,29 @@ namespace OurLive.Server.Migrations
                 });
 
             migrationBuilder.CreateTable(
+                name: "CalendarAccounts",
+                columns: table => new
+                {
+                    Id = table.Column<Guid>(type: "TEXT", nullable: false),
+                    DisplayName = table.Column<string>(type: "TEXT", maxLength: 200, nullable: false),
+                    BaseUrl = table.Column<string>(type: "TEXT", nullable: false),
+                    Username = table.Column<string>(type: "TEXT", nullable: false),
+                    EncryptedAppPassword = table.Column<string>(type: "TEXT", nullable: false),
+                    CreatedUtc = table.Column<DateTimeOffset>(type: "TEXT", nullable: false),
+                    LastDiscoveredUtc = table.Column<DateTimeOffset>(type: "TEXT", nullable: true)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_CalendarAccounts", x => x.Id);
+                });
+
+            migrationBuilder.CreateTable(
                 name: "AspNetRoleClaims",
                 columns: table => new
                 {
                     Id = table.Column<int>(type: "INTEGER", nullable: false)
                         .Annotation("Sqlite:Autoincrement", true),
-                    RoleId = table.Column<string>(type: "TEXT", nullable: false),
+                    RoleId = table.Column<Guid>(type: "TEXT", nullable: false),
                     ClaimType = table.Column<string>(type: "TEXT", nullable: true),
                     ClaimValue = table.Column<string>(type: "TEXT", nullable: true)
                 },
@@ -77,7 +96,7 @@ namespace OurLive.Server.Migrations
                 {
                     Id = table.Column<int>(type: "INTEGER", nullable: false)
                         .Annotation("Sqlite:Autoincrement", true),
-                    UserId = table.Column<string>(type: "TEXT", nullable: false),
+                    UserId = table.Column<Guid>(type: "TEXT", nullable: false),
                     ClaimType = table.Column<string>(type: "TEXT", nullable: true),
                     ClaimValue = table.Column<string>(type: "TEXT", nullable: true)
                 },
@@ -99,7 +118,7 @@ namespace OurLive.Server.Migrations
                     LoginProvider = table.Column<string>(type: "TEXT", maxLength: 128, nullable: false),
                     ProviderKey = table.Column<string>(type: "TEXT", maxLength: 128, nullable: false),
                     ProviderDisplayName = table.Column<string>(type: "TEXT", nullable: true),
-                    UserId = table.Column<string>(type: "TEXT", nullable: false)
+                    UserId = table.Column<Guid>(type: "TEXT", nullable: false)
                 },
                 constraints: table =>
                 {
@@ -117,7 +136,7 @@ namespace OurLive.Server.Migrations
                 columns: table => new
                 {
                     CredentialId = table.Column<byte[]>(type: "BLOB", maxLength: 1024, nullable: false),
-                    UserId = table.Column<string>(type: "TEXT", nullable: false),
+                    UserId = table.Column<Guid>(type: "TEXT", nullable: false),
                     Data = table.Column<string>(type: "TEXT", nullable: false)
                 },
                 constraints: table =>
@@ -135,8 +154,8 @@ namespace OurLive.Server.Migrations
                 name: "AspNetUserRoles",
                 columns: table => new
                 {
-                    UserId = table.Column<string>(type: "TEXT", nullable: false),
-                    RoleId = table.Column<string>(type: "TEXT", nullable: false)
+                    UserId = table.Column<Guid>(type: "TEXT", nullable: false),
+                    RoleId = table.Column<Guid>(type: "TEXT", nullable: false)
                 },
                 constraints: table =>
                 {
@@ -159,7 +178,7 @@ namespace OurLive.Server.Migrations
                 name: "AspNetUserTokens",
                 columns: table => new
                 {
-                    UserId = table.Column<string>(type: "TEXT", nullable: false),
+                    UserId = table.Column<Guid>(type: "TEXT", nullable: false),
                     LoginProvider = table.Column<string>(type: "TEXT", maxLength: 128, nullable: false),
                     Name = table.Column<string>(type: "TEXT", maxLength: 128, nullable: false),
                     Value = table.Column<string>(type: "TEXT", nullable: true)
@@ -171,6 +190,86 @@ namespace OurLive.Server.Migrations
                         name: "FK_AspNetUserTokens_AspNetUsers_UserId",
                         column: x => x.UserId,
                         principalTable: "AspNetUsers",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Cascade);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "Calendars",
+                columns: table => new
+                {
+                    Id = table.Column<Guid>(type: "TEXT", nullable: false),
+                    CalendarAccountId = table.Column<Guid>(type: "TEXT", nullable: false),
+                    CalDavHref = table.Column<string>(type: "TEXT", nullable: false),
+                    DisplayName = table.Column<string>(type: "TEXT", maxLength: 200, nullable: false),
+                    ColorHex = table.Column<string>(type: "TEXT", nullable: true),
+                    CTag = table.Column<string>(type: "TEXT", nullable: true),
+                    LastSyncedUtc = table.Column<DateTimeOffset>(type: "TEXT", nullable: true)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_Calendars", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_Calendars_CalendarAccounts_CalendarAccountId",
+                        column: x => x.CalendarAccountId,
+                        principalTable: "CalendarAccounts",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Cascade);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "CachedEvents",
+                columns: table => new
+                {
+                    Id = table.Column<Guid>(type: "TEXT", nullable: false),
+                    CalendarId = table.Column<Guid>(type: "TEXT", nullable: false),
+                    UId = table.Column<string>(type: "TEXT", nullable: false),
+                    Href = table.Column<string>(type: "TEXT", nullable: false),
+                    ETag = table.Column<string>(type: "TEXT", nullable: true),
+                    Summary = table.Column<string>(type: "TEXT", nullable: false),
+                    Location = table.Column<string>(type: "TEXT", nullable: true),
+                    Description = table.Column<string>(type: "TEXT", nullable: true),
+                    StartUtc = table.Column<DateTimeOffset>(type: "TEXT", nullable: false),
+                    EndUtc = table.Column<DateTimeOffset>(type: "TEXT", nullable: true),
+                    IsAllDay = table.Column<bool>(type: "INTEGER", nullable: false),
+                    RecurrenceRule = table.Column<string>(type: "TEXT", nullable: true),
+                    RawIcs = table.Column<string>(type: "TEXT", nullable: false),
+                    LastSyncedUtc = table.Column<DateTimeOffset>(type: "TEXT", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_CachedEvents", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_CachedEvents_Calendars_CalendarId",
+                        column: x => x.CalendarId,
+                        principalTable: "Calendars",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Cascade);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "CalendarPermissions",
+                columns: table => new
+                {
+                    Id = table.Column<Guid>(type: "TEXT", nullable: false),
+                    UserId = table.Column<Guid>(type: "TEXT", nullable: false),
+                    CalendarId = table.Column<Guid>(type: "TEXT", nullable: false),
+                    CanWrite = table.Column<bool>(type: "INTEGER", nullable: false),
+                    GrantedUtc = table.Column<DateTimeOffset>(type: "TEXT", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_CalendarPermissions", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_CalendarPermissions_AspNetUsers_UserId",
+                        column: x => x.UserId,
+                        principalTable: "AspNetUsers",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Cascade);
+                    table.ForeignKey(
+                        name: "FK_CalendarPermissions_Calendars_CalendarId",
+                        column: x => x.CalendarId,
+                        principalTable: "Calendars",
                         principalColumn: "Id",
                         onDelete: ReferentialAction.Cascade);
                 });
@@ -216,6 +315,28 @@ namespace OurLive.Server.Migrations
                 table: "AspNetUsers",
                 column: "NormalizedUserName",
                 unique: true);
+
+            migrationBuilder.CreateIndex(
+                name: "IX_CachedEvents_CalendarId_UId",
+                table: "CachedEvents",
+                columns: new[] { "CalendarId", "UId" },
+                unique: true);
+
+            migrationBuilder.CreateIndex(
+                name: "IX_CalendarPermissions_CalendarId",
+                table: "CalendarPermissions",
+                column: "CalendarId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_CalendarPermissions_UserId_CalendarId",
+                table: "CalendarPermissions",
+                columns: new[] { "UserId", "CalendarId" },
+                unique: true);
+
+            migrationBuilder.CreateIndex(
+                name: "IX_Calendars_CalendarAccountId",
+                table: "Calendars",
+                column: "CalendarAccountId");
         }
 
         /// <inheritdoc />
@@ -240,10 +361,22 @@ namespace OurLive.Server.Migrations
                 name: "AspNetUserTokens");
 
             migrationBuilder.DropTable(
+                name: "CachedEvents");
+
+            migrationBuilder.DropTable(
+                name: "CalendarPermissions");
+
+            migrationBuilder.DropTable(
                 name: "AspNetRoles");
 
             migrationBuilder.DropTable(
                 name: "AspNetUsers");
+
+            migrationBuilder.DropTable(
+                name: "Calendars");
+
+            migrationBuilder.DropTable(
+                name: "CalendarAccounts");
         }
     }
 }
