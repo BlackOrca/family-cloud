@@ -1,0 +1,119 @@
+@page "/"
+@implements IDisposable
+
+@if (_isLoading)
+{
+    <MudContainer MaxWidth="MaxWidth.Small" Class="mt-8 d-flex justify-center">
+        <MudProgressCircular Indeterminate="true" />
+    </MudContainer>
+}
+else if (AuthState.IsAuthenticated)
+{
+    <MudAppBar Elevation="1">
+        <MudText Typo="Typo.h6">OurLive</MudText>
+        <MudSpacer />
+        <MudText Typo="Typo.body2" Class="mr-2">@AuthState.DisplayName</MudText>
+        <MudIconButton Icon="@Icons.Material.Filled.Logout" Color="Color.Inherit" OnClick="LogoutAsync" />
+    </MudAppBar>
+
+    <MudContainer MaxWidth="MaxWidth.Small" Class="mt-4">
+        @if (_calendars.Count == 0)
+        {
+            <MudAlert Severity="Severity.Info">Für dich sind noch keine Kalender freigegeben.</MudAlert>
+        }
+        else
+        {
+            @if (_calendars.Count > 1)
+            {
+                <MudExpansionPanels Class="mb-2">
+                    <MudExpansionPanel Text="Kalender">
+                        <CalendarMultiSelect Calendars="_calendars" SelectedIds="_selectedCalendarIds"
+                                              SelectedIdsChanged="OnSelectionChangedAsync" />
+                    </MudExpansionPanel>
+                </MudExpansionPanels>
+            }
+
+            <AgendaView Events="_events" Calendars="_calendars" />
+        }
+    </MudContainer>
+}
+
+@code {
+    [Inject] private ApiClient Api { get; set; } = default!;
+    [Inject] private AuthTokenStore TokenStore { get; set; } = default!;
+    [Inject] private AppAuthState AuthState { get; set; } = default!;
+    [Inject] private NavigationManager Nav { get; set; } = default!;
+
+    private bool _isLoading = true;
+    private List<CalendarDto> _calendars = [];
+    private List<EventDto> _events = [];
+    private HashSet<Guid> _selectedCalendarIds = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        AuthState.Changed += OnAuthChanged;
+
+        if (!AuthState.IsAuthenticated)
+        {
+            var loaded = await TokenStore.LoadAsync();
+            if (loaded is { } session)
+            {
+                AuthState.SetLoggedIn(session.Token, session.DisplayName);
+            }
+        }
+
+        if (!AuthState.IsAuthenticated)
+        {
+            _isLoading = false;
+            Nav.NavigateTo("/login", replace: true);
+            return;
+        }
+
+        await LoadCalendarsAndEventsAsync();
+        _isLoading = false;
+    }
+
+    private async Task LoadCalendarsAndEventsAsync()
+    {
+        _calendars = await Api.GetCalendarsAsync();
+        _selectedCalendarIds = _calendars.Select(c => c.Id).ToHashSet();
+        await ReloadEventsAsync();
+    }
+
+    private async Task OnSelectionChangedAsync(HashSet<Guid> selectedIds)
+    {
+        _selectedCalendarIds = selectedIds;
+        await ReloadEventsAsync();
+        StateHasChanged();
+    }
+
+    private async Task ReloadEventsAsync()
+    {
+        var results = await Task.WhenAll(_selectedCalendarIds.Select(id => Api.GetEventsAsync(id)));
+        _events = results.SelectMany(e => e).OrderBy(e => e.StartUtc).ToList();
+    }
+
+    private async Task LogoutAsync()
+    {
+        TokenStore.Clear();
+        AuthState.SetLoggedOut();
+        await Task.CompletedTask;
+    }
+
+    private void OnAuthChanged()
+    {
+        InvokeAsync(() =>
+        {
+            if (!AuthState.IsAuthenticated)
+            {
+                Nav.NavigateTo("/login", replace: true);
+            }
+            StateHasChanged();
+        });
+    }
+
+    public void Dispose()
+    {
+        AuthState.Changed -= OnAuthChanged;
+    }
+}

@@ -9,6 +9,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.11" />
     <PackageReference Include="Microsoft.AspNetCore.Diagnostics.EntityFrameworkCore" Version="10.0.11" />
     <!-- Needed at design time so `dotnet ef` can use this project as the startup project for migrations. -->
     <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.11" PrivateAssets="all" />
@@ -18,6 +19,7 @@
     <ProjectReference Include="..\OurLive.Core\OurLive.Core.csproj" />
     <ProjectReference Include="..\OurLive.UI\OurLive.UI.csproj" />
     <ProjectReference Include="..\OurLive.ServiceDefaults\OurLive.ServiceDefaults.csproj" />
+    <ProjectReference Include="..\OurLive.Contracts\OurLive.Contracts.csproj" />
   </ItemGroup>
 
 </Project>

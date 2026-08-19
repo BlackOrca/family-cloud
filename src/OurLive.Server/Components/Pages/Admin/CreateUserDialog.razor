@@ -1,0 +1,70 @@
+@using System.ComponentModel.DataAnnotations
+@using Microsoft.AspNetCore.Identity
+@using OurLive.Core.Data
+@inject UserManager<AppUser> UserManager
+
+<MudDialog>
+    <DialogContent>
+        <MudForm Model="@model" @ref="form">
+            <MudTextField T="string" Label="Benutzername" @bind-Value="model.UserName" Required="true" RequiredError="Pflichtfeld" />
+            <MudTextField T="string" Label="Anzeigename" @bind-Value="model.DisplayName" Required="true" RequiredError="Pflichtfeld" Class="mt-3" />
+            <MudTextField T="string" Label="Passwort" @bind-Value="model.Password" InputType="InputType.Password" Required="true" RequiredError="Pflichtfeld" Class="mt-3" />
+        </MudForm>
+        @if (!string.IsNullOrEmpty(errorMessage))
+        {
+            <MudAlert Severity="Severity.Error" Class="mt-3">@errorMessage</MudAlert>
+        }
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Abbrechen</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SubmitAsync">Anlegen</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter]
+    private IMudDialogInstance MudDialog { get; set; } = default!;
+
+    private MudForm form = default!;
+    private readonly InputModel model = new();
+    private string? errorMessage;
+
+    private async Task SubmitAsync()
+    {
+        await form.ValidateAsync();
+        if (!form.IsValid)
+        {
+            return;
+        }
+
+        var user = new AppUser
+        {
+            UserName = model.UserName,
+            DisplayName = model.DisplayName,
+            CreatedUtc = DateTimeOffset.UtcNow,
+        };
+        var result = await UserManager.CreateAsync(user, model.Password);
+        if (result.Succeeded)
+        {
+            MudDialog.Close(DialogResult.Ok(true));
+        }
+        else
+        {
+            errorMessage = string.Join(", ", result.Errors.Select(e => e.Description));
+        }
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+
+    private sealed class InputModel
+    {
+        [Required]
+        public string UserName { get; set; } = "";
+
+        [Required]
+        public string DisplayName { get; set; } = "";
+
+        [Required]
+        public string Password { get; set; } = "";
+    }
+}

@@ -1,0 +1,55 @@
+@using System.ComponentModel.DataAnnotations
+
+<MudDialog>
+    <DialogContent>
+        <MudForm Model="@model" @ref="form">
+            <MudTextField T="string" Label="Anzeigename" @bind-Value="model.DisplayName" Required="true" RequiredError="Pflichtfeld"
+                          HelperText="z.B. 'Familie Nextcloud'" />
+            <MudTextField T="string" Label="Server-URL" @bind-Value="model.BaseUrl" Required="true" RequiredError="Pflichtfeld" Class="mt-3"
+                          HelperText="z.B. http://radicale:5232/ oder https://cloud.example.com/remote.php/dav/" />
+            <MudTextField T="string" Label="Benutzername" @bind-Value="model.Username" Required="true" RequiredError="Pflichtfeld" Class="mt-3" />
+            <MudTextField T="string" Label="Passwort / App-Passwort" @bind-Value="model.Password" InputType="InputType.Password"
+                          Required="true" RequiredError="Pflichtfeld" Class="mt-3" />
+        </MudForm>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Abbrechen</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SubmitAsync">Anlegen &amp; Kalender laden</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter]
+    private IMudDialogInstance MudDialog { get; set; } = default!;
+
+    private MudForm form = default!;
+    private readonly InputModel model = new();
+
+    private async Task SubmitAsync()
+    {
+        await form.ValidateAsync();
+        if (!form.IsValid)
+        {
+            return;
+        }
+
+        MudDialog.Close(DialogResult.Ok(model));
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+
+    public sealed class InputModel
+    {
+        [Required]
+        public string DisplayName { get; set; } = "";
+
+        [Required]
+        public string BaseUrl { get; set; } = "";
+
+        [Required]
+        public string Username { get; set; } = "";
+
+        [Required]
+        public string Password { get; set; } = "";
+    }
+}

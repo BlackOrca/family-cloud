@@ -1,0 +1,68 @@
+@* Shared login form — same markup for the MAUI app and (potentially) any future non-cookie client.
+   The host owns the actual submit mechanics via OnSubmit; this component only collects input and
+   displays a busy/error state. *@
+
+<MudCard Class="pa-4" Elevation="4">
+    <MudCardContent>
+        <MudText Typo="Typo.h5" Class="mb-4">@Title</MudText>
+
+        <MudForm @ref="_form" Model="this">
+            <MudTextField T="string" @bind-Value="UserName" Label="Benutzername" Required="true"
+                          RequiredError="Benutzername wird benötigt" Disabled="IsBusy"
+                          Immediate="true" OnKeyDown="HandleKeyDown" />
+            <MudTextField T="string" @bind-Value="Password" Label="Passwort" Required="true"
+                          RequiredError="Passwort wird benötigt" InputType="InputType.Password"
+                          Disabled="IsBusy" Immediate="true" OnKeyDown="HandleKeyDown" Class="mt-2" />
+        </MudForm>
+
+        @if (!string.IsNullOrWhiteSpace(ErrorMessage))
+        {
+            <MudAlert Severity="Severity.Error" Class="mt-3" Dense="true">@ErrorMessage</MudAlert>
+        }
+    </MudCardContent>
+    <MudCardActions Class="px-4 pb-4">
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" FullWidth="true"
+                   Disabled="IsBusy" OnClick="SubmitAsync">
+            @if (IsBusy)
+            {
+                <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+            }
+            Anmelden
+        </MudButton>
+    </MudCardActions>
+</MudCard>
+
+@code {
+    private MudForm? _form;
+
+    [Parameter] public string Title { get; set; } = "Anmelden";
+    [Parameter] public string UserName { get; set; } = "";
+    [Parameter] public string Password { get; set; } = "";
+    [Parameter] public bool IsBusy { get; set; }
+    [Parameter] public string? ErrorMessage { get; set; }
+    [Parameter] public EventCallback<(string UserName, string Password)> OnSubmit { get; set; }
+
+    private async Task SubmitAsync()
+    {
+        if (_form is null)
+        {
+            return;
+        }
+
+        await _form.ValidateAsync();
+        if (!_form.IsValid)
+        {
+            return;
+        }
+
+        await OnSubmit.InvokeAsync((UserName, Password));
+    }
+
+    private async Task HandleKeyDown(KeyboardEventArgs args)
+    {
+        if (args.Key == "Enter" && !IsBusy)
+        {
+            await SubmitAsync();
+        }
+    }
+}

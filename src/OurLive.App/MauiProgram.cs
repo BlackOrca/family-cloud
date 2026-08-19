@@ -1,4 +1,6 @@
-﻿using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging;
+using MudBlazor.Services;
+using OurLive.App.Services;
 
 namespace OurLive.App;
 
@@ -15,6 +17,13 @@ public static class MauiProgram
 			});
 
 		builder.Services.AddMauiBlazorWebView();
+		builder.Services.AddMudServices();
+
+		builder.Services.AddSingleton<AppAuthState>();
+		builder.Services.AddSingleton<AuthTokenStore>();
+		builder.Services.AddTransient<AuthTokenHandler>();
+		builder.Services.AddHttpClient<ApiClient>(client => client.BaseAddress = new Uri(ServerConfig.BaseAddress))
+			.AddHttpMessageHandler<AuthTokenHandler>();
 
 #if DEBUG
 		builder.Services.AddBlazorWebViewDeveloperTools();

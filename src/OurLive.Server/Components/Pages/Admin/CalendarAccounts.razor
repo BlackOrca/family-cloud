@@ -1,0 +1,151 @@
+@page "/admin/calendars"
+@attribute [Authorize]
+@using Microsoft.EntityFrameworkCore
+@using OurLive.Core.CalDav
+@using OurLive.Core.Data
+@using OurLive.Core.Domain
+@using OurLive.Core.Security
+@using OurLive.Core.Sync
+@inject OurLiveDbContext Db
+@inject CalendarSyncService SyncService
+@inject ICalDavPasswordProtector PasswordProtector
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+
+<PageTitle>Kalenderkonten</PageTitle>
+
+<MudText Typo="Typo.h4" Class="mb-4">Kalenderkonten</MudText>
+
+<MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="OpenCreateDialog" Class="mb-4">
+    Neues Kalenderkonto
+</MudButton>
+
+@if (accounts is null)
+{
+    <MudProgressCircular Indeterminate="true" />
+}
+else if (accounts.Count == 0)
+{
+    <MudAlert Severity="Severity.Info">Noch keine Kalenderkonten eingerichtet.</MudAlert>
+}
+else
+{
+    @foreach (var account in accounts)
+    {
+        <MudPaper Class="pa-4 mb-4" Elevation="2">
+            <div class="d-flex align-center justify-space-between">
+                <div>
+                    <MudText Typo="Typo.h6">@account.DisplayName</MudText>
+                    <MudText Typo="Typo.body2" Color="Color.Secondary">@account.BaseUrl (@account.Username)</MudText>
+                    <MudText Typo="Typo.caption">
+                        Zuletzt abgeglichen: @(account.LastDiscoveredUtc?.LocalDateTime.ToString("g") ?? "noch nie")
+                    </MudText>
+                </div>
+                <div>
+                    <MudButton StartIcon="@Icons.Material.Filled.Refresh" OnClick="@(() => RefreshCalendarsAsync(account))">
+                        Kalender aktualisieren
+                    </MudButton>
+                    <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error" OnClick="@(() => DeleteAccountAsync(account))" />
+                </div>
+            </div>
+
+            @if (account.Calendars.Count == 0)
+            {
+                <MudText Typo="Typo.body2" Class="mt-2">Keine Kalender gefunden.</MudText>
+            }
+            else
+            {
+                <MudList T="string" Class="mt-2">
+                    @foreach (var calendar in account.Calendars)
+                    {
+                        <MudListItem T="string">
+                            @calendar.DisplayName
+                            <MudText Typo="Typo.caption" Class="ml-2">
+                                (zuletzt synchronisiert: @(calendar.LastSyncedUtc?.LocalDateTime.ToString("g") ?? "noch nie"))
+                            </MudText>
+                        </MudListItem>
+                    }
+                </MudList>
+            }
+        </MudPaper>
+    }
+}
+
+@code {
+    private List<CalendarAccount>? accounts;
+
+    protected override async Task OnInitializedAsync() => await LoadAccountsAsync();
+
+    private async Task LoadAccountsAsync()
+    {
+        accounts = await Db.CalendarAccounts
+            .Include(a => a.Calendars)
+            .OrderBy(a => a.DisplayName)
+            .ToListAsync();
+    }
+
+    private async Task OpenCreateDialog()
+    {
+        var dialog = await DialogService.ShowAsync<CreateCalendarAccountDialog>("Neues Kalenderkonto");
+        var result = await dialog.Result;
+        if (result is null || result.Canceled || result.Data is not CreateCalendarAccountDialog.InputModel input)
+        {
+            return;
+        }
+
+        var account = new CalendarAccount
+        {
+            Id = Guid.NewGuid(),
+            DisplayName = input.DisplayName,
+            BaseUrl = input.BaseUrl,
+            Username = input.Username,
+            EncryptedAppPassword = PasswordProtector.Encrypt(input.Password),
+            CreatedUtc = DateTimeOffset.UtcNow,
+        };
+        Db.CalendarAccounts.Add(account);
+        await Db.SaveChangesAsync();
+
+        await DiscoverAsync(account, input.Password);
+        await LoadAccountsAsync();
+    }
+
+    private async Task RefreshCalendarsAsync(CalendarAccount account)
+    {
+        var password = PasswordProtector.Decrypt(account.EncryptedAppPassword);
+        await DiscoverAsync(account, password);
+        await LoadAccountsAsync();
+    }
+
+    private async Task DiscoverAsync(CalendarAccount account, string password)
+    {
+        try
+        {
+            await SyncService.DiscoverCalendarsAsync(account, new CalDavCredentials(account.Username, password));
+            Snackbar.Add($"Kalender für '{account.DisplayName}' aktualisiert.", Severity.Success);
+        }
+        catch (CalDavException ex)
+        {
+            Snackbar.Add($"Kalender-Abgleich fehlgeschlagen: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task DeleteAccountAsync(CalendarAccount account)
+    {
+        var confirmed = await DialogService.ShowMessageBoxAsync(new MessageBoxOptions
+        {
+            Title = "Kalenderkonto löschen",
+            Message = $"'{account.DisplayName}' wirklich löschen? Alle zugehörigen Kalender, Berechtigungen und zwischengespeicherten Termine gehen dabei verloren.",
+            YesText = "Löschen",
+            CancelText = "Abbrechen",
+        });
+        if (confirmed != true)
+        {
+            return;
+        }
+
+        Db.CalendarAccounts.Remove(account);
+        await Db.SaveChangesAsync();
+        Snackbar.Add($"Kalenderkonto '{account.DisplayName}' gelöscht.", Severity.Success);
+        await LoadAccountsAsync();
+    }
+}

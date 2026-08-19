@@ -1,0 +1,48 @@
+@page "/login"
+
+<MudContainer MaxWidth="MaxWidth.Small" Class="mt-8">
+    <LoginFormCard Title="OurLive" UserName="@_userName" Password="@_password"
+                   IsBusy="_isBusy" ErrorMessage="@_errorMessage" OnSubmit="HandleLoginAsync" />
+</MudContainer>
+
+@code {
+    [Inject] private ApiClient Api { get; set; } = default!;
+    [Inject] private AuthTokenStore TokenStore { get; set; } = default!;
+    [Inject] private AppAuthState AuthState { get; set; } = default!;
+    [Inject] private NavigationManager Nav { get; set; } = default!;
+
+    private string _userName = "";
+    private string _password = "";
+    private bool _isBusy;
+    private string? _errorMessage;
+
+    private async Task HandleLoginAsync((string UserName, string Password) credentials)
+    {
+        _isBusy = true;
+        _errorMessage = null;
+        StateHasChanged();
+
+        try
+        {
+            var result = await Api.LoginAsync(credentials.UserName, credentials.Password);
+            if (result is null)
+            {
+                _errorMessage = "Benutzername oder Passwort ist falsch.";
+                return;
+            }
+
+            await TokenStore.SaveAsync(result.Token, result.ExpiresUtc, result.DisplayName);
+            AuthState.SetLoggedIn(result.Token, result.DisplayName);
+            Nav.NavigateTo("/", replace: true);
+        }
+        catch (Exception)
+        {
+            _errorMessage = "Server nicht erreichbar. Bitte später erneut versuchen.";
+        }
+        finally
+        {
+            _isBusy = false;
+            StateHasChanged();
+        }
+    }
+}

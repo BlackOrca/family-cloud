@@ -1,0 +1,93 @@
+@page "/admin/users"
+@attribute [Authorize]
+@using Microsoft.AspNetCore.Identity
+@using Microsoft.EntityFrameworkCore
+@using OurLive.Core.Data
+@inject UserManager<AppUser> UserManager
+@inject OurLiveDbContext Db
+@inject AuthenticationStateProvider AuthState
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+
+<PageTitle>Benutzer</PageTitle>
+
+<MudText Typo="Typo.h4" Class="mb-4">Benutzer</MudText>
+
+<MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="OpenCreateDialog" Class="mb-4">
+    Neuer Benutzer
+</MudButton>
+
+<MudTable Items="@users" Hover="true" Loading="@(users is null)">
+    <HeaderContent>
+        <MudTh>Benutzername</MudTh>
+        <MudTh>Anzeigename</MudTh>
+        <MudTh>Erstellt</MudTh>
+        <MudTh></MudTh>
+    </HeaderContent>
+    <RowTemplate>
+        <MudTd DataLabel="Benutzername">@context.UserName</MudTd>
+        <MudTd DataLabel="Anzeigename">@context.DisplayName</MudTd>
+        <MudTd DataLabel="Erstellt">@context.CreatedUtc.LocalDateTime.ToString("g")</MudTd>
+        <MudTd>
+            <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error" Size="Size.Small"
+                            Disabled="@(context.Id == currentUserId)"
+                            OnClick="@(() => DeleteUserAsync(context))" />
+        </MudTd>
+    </RowTemplate>
+</MudTable>
+
+@code {
+    private List<AppUser>? users;
+    private Guid? currentUserId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthState.GetAuthenticationStateAsync();
+        var idClaim = authState.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        currentUserId = idClaim is not null ? Guid.Parse(idClaim) : null;
+
+        await LoadUsersAsync();
+    }
+
+    private async Task LoadUsersAsync()
+    {
+        users = await Db.Users.OrderBy(u => u.UserName).ToListAsync();
+    }
+
+    private async Task OpenCreateDialog()
+    {
+        var parameters = new DialogParameters();
+        var dialog = await DialogService.ShowAsync<CreateUserDialog>("Neuer Benutzer", parameters);
+        var result = await dialog.Result;
+        if (result is not null && !result.Canceled)
+        {
+            await LoadUsersAsync();
+        }
+    }
+
+    private async Task DeleteUserAsync(AppUser user)
+    {
+        var confirmed = await DialogService.ShowMessageBoxAsync(new MessageBoxOptions
+        {
+            Title = "Benutzer löschen",
+            Message = $"'{user.UserName}' wirklich löschen? Alle Kalender-Berechtigungen dieses Benutzers gehen dabei verloren.",
+            YesText = "Löschen",
+            CancelText = "Abbrechen",
+        });
+        if (confirmed != true)
+        {
+            return;
+        }
+
+        var result = await UserManager.DeleteAsync(user);
+        if (result.Succeeded)
+        {
+            Snackbar.Add($"Benutzer '{user.UserName}' gelöscht.", Severity.Success);
+            await LoadUsersAsync();
+        }
+        else
+        {
+            Snackbar.Add($"Löschen fehlgeschlagen: {string.Join(", ", result.Errors.Select(e => e.Description))}", Severity.Error);
+        }
+    }
+}

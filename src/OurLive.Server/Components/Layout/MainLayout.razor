@@ -1,6 +1,38 @@
-﻿@inherits LayoutComponentBase
+@inherits LayoutComponentBase
 
-@Body
+<MudThemeProvider Theme="OurLiveTheme.Default" />
+<MudPopoverProvider />
+<MudDialogProvider />
+<MudSnackbarProvider />
+
+<MudLayout>
+    <MudAppBar Elevation="1">
+        <MudText Typo="Typo.h6">our-live Admin</MudText>
+        <MudSpacer />
+        <AuthorizeView>
+            <Authorized>
+                <MudText Class="mr-4" Typo="Typo.body2">@context.User.Identity?.Name</MudText>
+                <form action="Account/Logout" method="post">
+                    <AntiforgeryToken />
+                    <input type="hidden" name="ReturnUrl" value="/" />
+                    <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Text" Color="Color.Inherit">Abmelden</MudButton>
+                </form>
+            </Authorized>
+        </AuthorizeView>
+    </MudAppBar>
+    <MudDrawer Open="true" Elevation="1" Variant="DrawerVariant.Persistent">
+        <MudNavMenu>
+            <MudNavLink Href="/admin/users" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.People">Benutzer</MudNavLink>
+            <MudNavLink Href="/admin/calendars" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.CalendarMonth">Kalenderkonten</MudNavLink>
+            <MudNavLink Href="/admin/permissions" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Lock">Berechtigungen</MudNavLink>
+        </MudNavMenu>
+    </MudDrawer>
+    <MudMainContent>
+        <MudContainer MaxWidth="MaxWidth.Large" Class="my-4">
+            @Body
+        </MudContainer>
+    </MudMainContent>
+</MudLayout>
 
 <div id="blazor-error-ui" data-nosnippet>
     An unhandled error has occurred.

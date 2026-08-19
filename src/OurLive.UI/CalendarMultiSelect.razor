@@ -1,0 +1,37 @@
+@* Calendar picker used both for the app's agenda filter and (reusable) the admin permission view. *@
+
+<MudList T="Guid" Style="width:100%;">
+    @foreach (var calendar in Calendars)
+    {
+        <MudListItem T="Guid">
+            <MudCheckBox T="bool" Value="SelectedIds.Contains(calendar.Id)"
+                         ValueChanged="@(isChecked => ToggleAsync(calendar.Id, isChecked))"
+                         Color="Color.Primary">
+                <div style="display:flex; align-items:center; gap:8px;">
+                    <div style="width:12px; height:12px; border-radius:50%; background-color:@(string.IsNullOrWhiteSpace(calendar.ColorHex) ? "var(--mud-palette-primary)" : calendar.ColorHex);"></div>
+                    <MudText>@calendar.DisplayName</MudText>
+                </div>
+            </MudCheckBox>
+        </MudListItem>
+    }
+</MudList>
+
+@code {
+    [Parameter, EditorRequired] public IReadOnlyList<CalendarDto> Calendars { get; set; } = [];
+    [Parameter] public HashSet<Guid> SelectedIds { get; set; } = [];
+    [Parameter] public EventCallback<HashSet<Guid>> SelectedIdsChanged { get; set; }
+
+    private async Task ToggleAsync(Guid calendarId, bool isChecked)
+    {
+        if (isChecked)
+        {
+            SelectedIds.Add(calendarId);
+        }
+        else
+        {
+            SelectedIds.Remove(calendarId);
+        }
+
+        await SelectedIdsChanged.InvokeAsync(SelectedIds);
+    }
+}

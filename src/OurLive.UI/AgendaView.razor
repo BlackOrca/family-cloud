@@ -1,0 +1,63 @@
+@* Host-agnostic event list: takes already-loaded events and renders them grouped by day.
+   No HTTP calls here — the host (server admin page or MAUI app) owns fetching. *@
+
+@if (Events.Count == 0)
+{
+    <MudText Typo="Typo.body1" Class="pa-4" Align="Align.Center">Keine Termine im gewählten Zeitraum.</MudText>
+}
+else
+{
+    @foreach (var day in GroupedByDay)
+    {
+        <MudText Typo="Typo.subtitle2" Class="mt-4 mb-1 mud-text-secondary">@day.Key.ToString("dddd, d. MMMM yyyy")</MudText>
+        <MudList T="EventDto">
+            @foreach (var evt in day)
+            {
+                <MudListItem T="EventDto" OnClick="() => OnEventClick.InvokeAsync(evt)">
+                    <div style="display:flex; align-items:center; gap:8px;">
+                        <div style="width:4px; align-self:stretch; border-radius:2px; background-color:@ColorFor(evt);"></div>
+                        <div style="flex:1;">
+                            <MudText Typo="Typo.body1">@evt.Summary</MudText>
+                            <MudText Typo="Typo.caption" Class="mud-text-secondary">
+                                @TimeRangeFor(evt)
+                                @if (!string.IsNullOrWhiteSpace(evt.Location))
+                                {
+                                    @($" · {evt.Location}")
+                                }
+                            </MudText>
+                        </div>
+                    </div>
+                </MudListItem>
+            }
+        </MudList>
+    }
+}
+
+@code {
+    [Parameter, EditorRequired] public IReadOnlyList<EventDto> Events { get; set; } = [];
+    [Parameter] public IReadOnlyList<CalendarDto> Calendars { get; set; } = [];
+    [Parameter] public EventCallback<EventDto> OnEventClick { get; set; }
+
+    private IEnumerable<IGrouping<DateOnly, EventDto>> GroupedByDay =>
+        Events
+            .OrderBy(e => e.StartUtc)
+            .GroupBy(e => DateOnly.FromDateTime(e.StartUtc.LocalDateTime));
+
+    private string TimeRangeFor(EventDto evt)
+    {
+        if (evt.IsAllDay)
+        {
+            return "Ganztägig";
+        }
+
+        var start = evt.StartUtc.LocalDateTime.ToString("HH:mm");
+        var end = evt.EndUtc?.LocalDateTime.ToString("HH:mm");
+        return end is null ? start : $"{start} – {end}";
+    }
+
+    private string ColorFor(EventDto evt)
+    {
+        var calendar = Calendars.FirstOrDefault(c => c.Id == evt.CalendarId);
+        return string.IsNullOrWhiteSpace(calendar?.ColorHex) ? "var(--mud-palette-primary)" : calendar.ColorHex;
+    }
+}
