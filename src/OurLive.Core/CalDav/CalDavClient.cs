@@ -55,7 +55,7 @@ public class CalDavClient(HttpClient httpClient) : ICalDavClient
         if (!response.IsSuccessStatusCode)
         {
             var body = await response.Content.ReadAsStringAsync(ct);
-            throw new CalDavException($"PUT {eventUri} failed with {(int)response.StatusCode} {response.ReasonPhrase}: {body}");
+            throw new CalDavException($"PUT {eventUri} failed with {(int)response.StatusCode} {response.ReasonPhrase}: {body}", response.StatusCode);
         }
 
         return response.Headers.ETag?.Tag
@@ -72,7 +72,7 @@ public class CalDavClient(HttpClient httpClient) : ICalDavClient
         if (!response.IsSuccessStatusCode && response.StatusCode != HttpStatusCode.NotFound)
         {
             var body = await response.Content.ReadAsStringAsync(ct);
-            throw new CalDavException($"DELETE {eventUrl} failed with {(int)response.StatusCode} {response.ReasonPhrase}: {body}");
+            throw new CalDavException($"DELETE {eventUrl} failed with {(int)response.StatusCode} {response.ReasonPhrase}: {body}", response.StatusCode);
         }
     }
 
@@ -89,7 +89,7 @@ public class CalDavClient(HttpClient httpClient) : ICalDavClient
         var responseBody = await response.Content.ReadAsStringAsync(ct);
         if (!response.IsSuccessStatusCode)
         {
-            throw new CalDavException($"{method} {uri} failed with {(int)response.StatusCode} {response.ReasonPhrase}: {responseBody}");
+            throw new CalDavException($"{method} {uri} failed with {(int)response.StatusCode} {response.ReasonPhrase}: {responseBody}", response.StatusCode);
         }
 
         return responseBody;

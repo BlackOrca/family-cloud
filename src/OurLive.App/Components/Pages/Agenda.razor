@@ -33,9 +33,16 @@ else if (AuthState.IsAuthenticated)
                 </MudExpansionPanels>
             }
 
-            <AgendaView Events="_events" Calendars="_calendars" />
+            <AgendaView Events="_events" Calendars="_calendars" OnEventClick="OpenEditDialogAsync" />
         }
     </MudContainer>
+
+    @if (_calendars.Any(c => c.CanWrite))
+    {
+        <div style="position:fixed; bottom:24px; right:24px;">
+            <MudFab Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="OpenCreateDialogAsync" />
+        </div>
+    }
 }
 
 @code {
@@ -43,6 +50,8 @@ else if (AuthState.IsAuthenticated)
     [Inject] private AuthTokenStore TokenStore { get; set; } = default!;
     [Inject] private AppAuthState AuthState { get; set; } = default!;
     [Inject] private NavigationManager Nav { get; set; } = default!;
+    [Inject] private IDialogService DialogService { get; set; } = default!;
+    [Inject] private ISnackbar Snackbar { get; set; } = default!;
 
     private bool _isLoading = true;
     private List<CalendarDto> _calendars = [];
@@ -91,6 +100,70 @@ else if (AuthState.IsAuthenticated)
     {
         var results = await Task.WhenAll(_selectedCalendarIds.Select(id => Api.GetEventsAsync(id)));
         _events = results.SelectMany(e => e).OrderBy(e => e.StartUtc).ToList();
+    }
+
+    private async Task OpenCreateDialogAsync()
+    {
+        var writableCalendarId = _calendars.FirstOrDefault(c => c.CanWrite)?.Id;
+        if (writableCalendarId is not { } calendarId)
+        {
+            return;
+        }
+
+        var dialog = await DialogService.ShowAsync<EventEditDialog>("Neuer Termin");
+        var dialogResult = await dialog.Result;
+        if (dialogResult is null || dialogResult.Canceled || dialogResult.Data is not EventEditDialogResult { Action: EventEditDialogAction.Save } result)
+        {
+            return;
+        }
+
+        var writeResult = await Api.CreateEventAsync(calendarId, result.Request!);
+        await HandleWriteResultAsync(writeResult, "erstellt");
+    }
+
+    private async Task OpenEditDialogAsync(EventDto evt)
+    {
+        var parameters = new DialogParameters<EventEditDialog> { { x => x.ExistingEvent, evt } };
+        var dialog = await DialogService.ShowAsync<EventEditDialog>("Termin bearbeiten", parameters);
+        var dialogResult = await dialog.Result;
+        if (dialogResult is null || dialogResult.Canceled || dialogResult.Data is not EventEditDialogResult result)
+        {
+            return;
+        }
+
+        var writeResult = result.Action == EventEditDialogAction.Delete
+            ? await Api.DeleteEventAsync(evt.Id)
+            : await Api.UpdateEventAsync(evt.Id, result.Request!);
+
+        await HandleWriteResultAsync(writeResult, result.Action == EventEditDialogAction.Delete ? "gelöscht" : "gespeichert");
+    }
+
+    private async Task HandleWriteResultAsync(EventWriteResult result, string successVerb)
+    {
+        switch (result.Outcome)
+        {
+            case EventWriteOutcome.Success:
+                Snackbar.Add($"Termin {successVerb}.", Severity.Success);
+                await ReloadEventsAsync();
+                StateHasChanged();
+                break;
+            case EventWriteOutcome.Conflict:
+                Snackbar.Add("Der Termin wurde zwischenzeitlich anderweitig geändert. Bitte neu laden.", Severity.Warning);
+                await ReloadEventsAsync();
+                StateHasChanged();
+                break;
+            case EventWriteOutcome.Forbidden:
+                Snackbar.Add("Keine Schreibberechtigung für diesen Kalender.", Severity.Error);
+                break;
+            case EventWriteOutcome.NotFound:
+                Snackbar.Add("Termin wurde nicht gefunden — evtl. bereits gelöscht.", Severity.Warning);
+                await ReloadEventsAsync();
+                StateHasChanged();
+                break;
+            default:
+                Snackbar.Add("Speichern fehlgeschlagen. Bitte später erneut versuchen.", Severity.Error);
+                break;
+        }
     }
 
     private async Task LogoutAsync()

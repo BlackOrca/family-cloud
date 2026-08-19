@@ -1,3 +1,4 @@
+using System.Net;
 using System.Net.Http.Json;
 using OurLive.Contracts.Auth;
 using OurLive.Contracts.Calendars;
@@ -42,5 +43,42 @@ internal sealed class ApiClient(HttpClient http)
 
         var events = await http.GetFromJsonAsync<List<EventDto>>(query, ct);
         return events ?? [];
+    }
+
+    public async Task<EventWriteResult> CreateEventAsync(Guid calendarId, EventWriteRequest request, CancellationToken ct = default)
+    {
+        var response = await http.PostAsJsonAsync($"api/calendars/{calendarId}/events", request, ct);
+        return await ToWriteResultAsync(response, ct);
+    }
+
+    public async Task<EventWriteResult> UpdateEventAsync(Guid eventId, EventWriteRequest request, CancellationToken ct = default)
+    {
+        var response = await http.PutAsJsonAsync($"api/events/{eventId}", request, ct);
+        return await ToWriteResultAsync(response, ct);
+    }
+
+    public async Task<EventWriteResult> DeleteEventAsync(Guid eventId, CancellationToken ct = default)
+    {
+        var response = await http.DeleteAsync($"api/events/{eventId}", ct);
+        return response.StatusCode == HttpStatusCode.NoContent
+            ? new EventWriteResult(EventWriteOutcome.Success)
+            : await ToWriteResultAsync(response, ct);
+    }
+
+    private static async Task<EventWriteResult> ToWriteResultAsync(HttpResponseMessage response, CancellationToken ct)
+    {
+        if (response.IsSuccessStatusCode)
+        {
+            var dto = await response.Content.ReadFromJsonAsync<EventDto>(ct);
+            return new EventWriteResult(EventWriteOutcome.Success, dto);
+        }
+
+        return response.StatusCode switch
+        {
+            HttpStatusCode.Forbidden => new EventWriteResult(EventWriteOutcome.Forbidden),
+            HttpStatusCode.NotFound => new EventWriteResult(EventWriteOutcome.NotFound),
+            HttpStatusCode.Conflict => new EventWriteResult(EventWriteOutcome.Conflict),
+            _ => new EventWriteResult(EventWriteOutcome.Error, ErrorMessage: await response.Content.ReadAsStringAsync(ct)),
+        };
     }
 }

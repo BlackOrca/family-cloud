@@ -30,6 +30,7 @@ builder.Services.AddScoped<AuthenticationStateProvider, IdentityRevalidatingAuth
 
 builder.Services.AddHttpClient<ICalDavClient, CalDavClient>();
 builder.Services.AddScoped<CalendarSyncService>();
+builder.Services.AddScoped<CalendarWriteService>();
 
 var jwtSigningKey = builder.Configuration["Jwt:SigningKey"]
     ?? throw new InvalidOperationException(

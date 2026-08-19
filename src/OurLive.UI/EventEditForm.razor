@@ -1,0 +1,135 @@
+@* Shared create/edit form for a single, non-recurring event. Host owns the actual HTTP call and
+   passes the current event (edit mode) or nothing (create mode) plus save/delete/cancel callbacks —
+   this component only collects input. Multi-day timed events and recurrence authoring are out of
+   scope; a single date with an optional start/end time (or all-day) is what a household needs. *@
+
+<MudForm @ref="_form" Model="this">
+    <MudTextField T="string" @bind-Value="_summary" Label="Titel" Required="true" RequiredError="Titel wird benötigt" Disabled="IsBusy" />
+    <MudTextField T="string" @bind-Value="_location" Label="Ort" Class="mt-2" Disabled="IsBusy" />
+    <MudTextField T="string" @bind-Value="_description" Label="Beschreibung" Lines="3" Class="mt-2" Disabled="IsBusy" />
+    <MudCheckBox T="bool" Value="_isAllDay" ValueChanged="OnIsAllDayChanged" Label="Ganztägig" Class="mt-2" Disabled="IsBusy" />
+    <MudDatePicker @bind-Date="_date" Label="Datum" Required="true" RequiredError="Datum wird benötigt" Class="mt-2" Disabled="IsBusy" />
+    @if (!_isAllDay)
+    {
+        <MudTimePicker @bind-Time="_startTime" Label="Startzeit" Required="true" RequiredError="Startzeit wird benötigt" Class="mt-2" Disabled="IsBusy" />
+        <MudTimePicker @bind-Time="_endTime" Label="Endzeit (optional)" Class="mt-2" Disabled="IsBusy" />
+    }
+</MudForm>
+
+@if (!string.IsNullOrWhiteSpace(ErrorMessage))
+{
+    <MudAlert Severity="Severity.Error" Class="mt-3" Dense="true">@ErrorMessage</MudAlert>
+}
+
+<div class="d-flex align-center mt-4" style="gap:8px;">
+    @if (ExistingEvent is not null)
+    {
+        <MudButton Color="Color.Error" Variant="Variant.Outlined" Disabled="IsBusy" OnClick="() => OnDelete.InvokeAsync()">
+            Löschen
+        </MudButton>
+    }
+    <MudSpacer />
+    <MudButton Disabled="IsBusy" OnClick="() => OnCancel.InvokeAsync()">Abbrechen</MudButton>
+    <MudButton Variant="Variant.Filled" Color="Color.Primary" Disabled="IsBusy" OnClick="SaveAsync">
+        @if (IsBusy)
+        {
+            <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+        }
+        Speichern
+    </MudButton>
+</div>
+
+@code {
+    private MudForm? _form;
+    private Guid? _initializedForEventId;
+    private bool _initializedForCreate;
+
+    private string _summary = "";
+    private string? _location;
+    private string? _description;
+    private bool _isAllDay;
+    private DateTime? _date = DateTime.Today;
+    private TimeSpan? _startTime = DateTime.Now.TimeOfDay;
+    private TimeSpan? _endTime;
+
+    [Parameter] public EventDto? ExistingEvent { get; set; }
+    [Parameter] public EventCallback<EventWriteRequest> OnSave { get; set; }
+    [Parameter] public EventCallback OnDelete { get; set; }
+    [Parameter] public EventCallback OnCancel { get; set; }
+    [Parameter] public bool IsBusy { get; set; }
+    [Parameter] public string? ErrorMessage { get; set; }
+
+    protected override void OnParametersSet()
+    {
+        if (ExistingEvent is { } evt)
+        {
+            if (_initializedForEventId == evt.Id)
+            {
+                return;
+            }
+            _initializedForEventId = evt.Id;
+
+            _summary = evt.Summary;
+            _location = evt.Location;
+            _description = evt.Description;
+            _isAllDay = evt.IsAllDay;
+            var localStart = evt.StartUtc.LocalDateTime;
+            _date = localStart.Date;
+            _startTime = localStart.TimeOfDay;
+            _endTime = evt.EndUtc?.LocalDateTime.TimeOfDay;
+        }
+        else if (!_initializedForCreate)
+        {
+            _initializedForCreate = true;
+            _date = DateTime.Today;
+            _startTime = RoundToNextQuarterHour(DateTime.Now.TimeOfDay);
+        }
+    }
+
+    private void OnIsAllDayChanged(bool value)
+    {
+        _isAllDay = value;
+        if (!value && _startTime is null)
+        {
+            _startTime = RoundToNextQuarterHour(DateTime.Now.TimeOfDay);
+        }
+    }
+
+    private static TimeSpan RoundToNextQuarterHour(TimeSpan value)
+    {
+        var minutes = (int)Math.Ceiling(value.TotalMinutes / 15.0) * 15;
+        return TimeSpan.FromMinutes(minutes);
+    }
+
+    private async Task SaveAsync()
+    {
+        if (_form is null || _date is null)
+        {
+            return;
+        }
+
+        await _form.ValidateAsync();
+        if (!_form.IsValid)
+        {
+            return;
+        }
+
+        DateTimeOffset startUtc;
+        DateTimeOffset? endUtc;
+        if (_isAllDay)
+        {
+            startUtc = ToOffset(_date.Value.Date);
+            endUtc = null;
+        }
+        else
+        {
+            var startLocal = _date.Value.Date + (_startTime ?? TimeSpan.Zero);
+            startUtc = ToOffset(startLocal);
+            endUtc = _endTime is null ? null : ToOffset(_date.Value.Date + _endTime.Value);
+        }
+
+        await OnSave.InvokeAsync(new EventWriteRequest(_summary, _location, _description, startUtc, endUtc, _isAllDay));
+    }
+
+    private static DateTimeOffset ToOffset(DateTime local) => new(local, TimeZoneInfo.Local.GetUtcOffset(local));
+}

@@ -1,0 +1,53 @@
+services:
+  ourlive-dashboard:
+    image: "mcr.microsoft.com/dotnet/nightly/aspire-dashboard:13.5"
+    ports:
+      - "18888"
+    expose:
+      - "18889"
+      - "18890"
+    networks:
+      - "aspire"
+    restart: "always"
+  radicale:
+    image: "tomsquest/docker-radicale:latest"
+    environment:
+      TZ: "Europe/Berlin"
+    expose:
+      - "5232"
+    volumes:
+      - type: "bind"
+        target: "/data"
+        source: "./data/radicale"
+    networks:
+      - "aspire"
+  server:
+    image: "${SERVER_IMAGE}"
+    environment:
+      OTEL_DOTNET_EXPERIMENTAL_OTLP_RETRY: "in_memory"
+      ASPNETCORE_FORWARDEDHEADERS_ENABLED: "true"
+      HTTP_PORTS: "${SERVER_PORT}"
+      ConnectionStrings__DefaultConnection: "Data Source=/data/ourlive.db"
+      Jwt__SigningKey: "${JWT_SIGNING_KEY}"
+      SeedAdmin__UserName: "${SEED_ADMIN_USERNAME}"
+      SeedAdmin__Password: "${SEED_ADMIN_PASSWORD}"
+      OTEL_EXPORTER_OTLP_ENDPOINT: "http://ourlive-dashboard:18889"
+      OTEL_EXPORTER_OTLP_PROTOCOL: "grpc"
+      OTEL_SERVICE_NAME: "server"
+    ports:
+      - "5253:${SERVER_PORT}"
+    expose:
+      - "${SERVER_PORT}"
+    volumes:
+      - type: "bind"
+        target: "/data"
+        source: "./data/server"
+    depends_on:
+      radicale:
+        condition: "service_started"
+    user: "0:0"
+    networks:
+      - "aspire"
+networks:
+  aspire:
+    driver: "bridge"

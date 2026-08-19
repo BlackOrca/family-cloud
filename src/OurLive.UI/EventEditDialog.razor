@@ -1,0 +1,21 @@
+@* Thin MudDialog wrapper around EventEditForm — the actual HTTP call happens after the dialog
+   closes, in whatever page opened it (see EventEditForm's own doc comment for why). *@
+
+<MudDialog>
+    <DialogContent>
+        <EventEditForm ExistingEvent="ExistingEvent" OnSave="HandleSave" OnDelete="HandleDelete" OnCancel="Cancel" />
+    </DialogContent>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private IMudDialogInstance MudDialog { get; set; } = default!;
+    [Parameter] public EventDto? ExistingEvent { get; set; }
+
+    private void Cancel() => MudDialog.Cancel();
+
+    private void HandleSave(EventWriteRequest request) =>
+        MudDialog.Close(DialogResult.Ok(new EventEditDialogResult(EventEditDialogAction.Save, request)));
+
+    private void HandleDelete() =>
+        MudDialog.Close(DialogResult.Ok(new EventEditDialogResult(EventEditDialogAction.Delete)));
+}

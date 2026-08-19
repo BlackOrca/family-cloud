@@ -68,6 +68,9 @@ artifacts/
 # our-live local dev SQLite database + Data Protection key ring
 .data/
 
+# our-live docker-compose.yaml bind-mount data (Radicale + server), created next to it on `docker compose up`
+/data/
+
 # Tye
 .tye/
 
