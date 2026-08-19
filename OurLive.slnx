@@ -1,0 +1,14 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/OurLive.App/OurLive.App.csproj" />
+    <Project Path="src/OurLive.AppHost/OurLive.AppHost.csproj" />
+    <Project Path="src/OurLive.Contracts/OurLive.Contracts.csproj" />
+    <Project Path="src/OurLive.Core/OurLive.Core.csproj" />
+    <Project Path="src/OurLive.Server/OurLive.Server.csproj" />
+    <Project Path="src/OurLive.ServiceDefaults/OurLive.ServiceDefaults.csproj" />
+    <Project Path="src/OurLive.UI/OurLive.UI.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/OurLive.Core.Tests/OurLive.Core.Tests.csproj" />
+  </Folder>
+</Solution>
