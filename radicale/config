@@ -1,3 +1,12 @@
+# This custom config file replaces the image's default wholesale (see AppHost.cs's bind mount of
+# this file to /config/config), which otherwise sets this to 0.0.0.0:5232 for reachability from
+# outside the container. Without it Radicale falls back to its own built-in default of
+# localhost:5232 (loopback-only), so nothing arriving via Docker's published/bridged port ever
+# reaches it — requests get accepted at the TCP/NAT layer and then dropped with no response,
+# which surfaces to .NET clients as "The response ended prematurely" (ResponseEnded).
+[server]
+hosts = 0.0.0.0:5232
+
 [auth]
 type = htpasswd
 htpasswd_filename = /auth/users

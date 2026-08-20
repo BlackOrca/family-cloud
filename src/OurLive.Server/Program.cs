@@ -29,7 +29,11 @@ builder.Services.AddCascadingAuthenticationState();
 builder.Services.AddScoped<IdentityRedirectManager>();
 builder.Services.AddScoped<AuthenticationStateProvider, IdentityRevalidatingAuthenticationStateProvider>();
 
-builder.Services.AddHttpClient<ICalDavClient, CalDavClient>();
+builder.Services.AddHttpClient<ICalDavClient, CalDavClient>()
+    // Radicale's bundled server replies HTTP/1.0 and closes the connection after every response
+    // (no keep-alive). Without this, SocketsHttpHandler's connection pool intermittently tries to
+    // reuse a connection Radicale already closed, surfacing as HttpIOException "ResponseEnded".
+    .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler { PooledConnectionLifetime = TimeSpan.Zero });
 builder.Services.AddScoped<CalendarSyncService>();
 builder.Services.AddScoped<CalendarWriteService>();
 

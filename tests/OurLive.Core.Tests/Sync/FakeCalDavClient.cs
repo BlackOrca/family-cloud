@@ -17,6 +17,12 @@ internal sealed class FakeCalDavClient : ICalDavClient
 
     public Func<Uri, string, CalDavCredentials, CancellationToken, Task>? DeleteEvent { get; set; }
 
+    public Func<Uri, string, string?, CalDavCredentials, CancellationToken, Task>? CreateCalendar { get; set; }
+
+    public Func<Uri, string, string?, CalDavCredentials, CancellationToken, Task>? UpdateCalendar { get; set; }
+
+    public Func<Uri, CalDavCredentials, CancellationToken, Task>? DeleteCalendar { get; set; }
+
     public Task<Uri> DiscoverCalendarHomeAsync(Uri serverUrl, CalDavCredentials credentials, CancellationToken ct = default) =>
         (DiscoverCalendarHome ?? throw new NotImplementedException($"{nameof(DiscoverCalendarHome)} was not set up."))(serverUrl, credentials, ct);
 
@@ -31,4 +37,13 @@ internal sealed class FakeCalDavClient : ICalDavClient
 
     public Task DeleteEventAsync(Uri eventUrl, string etag, CalDavCredentials credentials, CancellationToken ct = default) =>
         (DeleteEvent ?? throw new NotImplementedException($"{nameof(DeleteEvent)} was not set up."))(eventUrl, etag, credentials, ct);
+
+    public Task CreateCalendarAsync(Uri calendarUrl, string displayName, string? colorHex, CalDavCredentials credentials, CancellationToken ct = default) =>
+        (CreateCalendar ?? throw new NotImplementedException($"{nameof(CreateCalendar)} was not set up."))(calendarUrl, displayName, colorHex, credentials, ct);
+
+    public Task UpdateCalendarAsync(Uri calendarUrl, string displayName, string? colorHex, CalDavCredentials credentials, CancellationToken ct = default) =>
+        (UpdateCalendar ?? throw new NotImplementedException($"{nameof(UpdateCalendar)} was not set up."))(calendarUrl, displayName, colorHex, credentials, ct);
+
+    public Task DeleteCalendarAsync(Uri calendarUrl, CalDavCredentials credentials, CancellationToken ct = default) =>
+        (DeleteCalendar ?? throw new NotImplementedException($"{nameof(DeleteCalendar)} was not set up."))(calendarUrl, credentials, ct);
 }

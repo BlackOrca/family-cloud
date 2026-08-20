@@ -70,6 +70,44 @@ public class CalDavXmlRequestsTests
     }
 
     [Fact]
+    public void MkCalendar_sets_displayname_component_set_and_color()
+    {
+        var xml = CalDavXmlRequests.MkCalendar("Kinder", "#4287f5");
+
+        var doc = XDocument.Parse(xml);
+        Assert.Equal(Cal + "mkcalendar", doc.Root!.Name);
+
+        var prop = doc.Root.Element(Dav + "set")!.Element(Dav + "prop")!;
+        Assert.Equal("Kinder", prop.Element(Dav + "displayname")!.Value);
+        Assert.Equal("#4287f5", prop.Element(Cs + "calendar-color")!.Value);
+
+        var comp = prop.Element(Cal + "supported-calendar-component-set")!.Element(Cal + "comp")!;
+        Assert.Equal("VEVENT", comp.Attribute("name")!.Value);
+    }
+
+    [Fact]
+    public void MkCalendar_omits_color_when_not_given()
+    {
+        var xml = CalDavXmlRequests.MkCalendar("Kinder", null);
+
+        var prop = XDocument.Parse(xml).Root!.Element(Dav + "set")!.Element(Dav + "prop")!;
+        Assert.Null(prop.Element(Cs + "calendar-color"));
+    }
+
+    [Fact]
+    public void UpdateCalendarProps_sets_displayname_and_color()
+    {
+        var xml = CalDavXmlRequests.UpdateCalendarProps("Geburtstage", "#00ff00");
+
+        var doc = XDocument.Parse(xml);
+        Assert.Equal(Dav + "propertyupdate", doc.Root!.Name);
+
+        var prop = doc.Root.Element(Dav + "set")!.Element(Dav + "prop")!;
+        Assert.Equal("Geburtstage", prop.Element(Dav + "displayname")!.Value);
+        Assert.Equal("#00ff00", prop.Element(Cs + "calendar-color")!.Value);
+    }
+
+    [Fact]
     public void Requests_include_an_XML_declaration()
     {
         // Some CalDAV servers (e.g. iCloud) reject request bodies without one.

@@ -1,0 +1,64 @@
+@using System.ComponentModel.DataAnnotations
+@using MudBlazor.Utilities
+
+<MudDialog>
+    <DialogContent>
+        <MudForm Model="@model" @ref="form">
+            <MudTextField T="string" Label="Anzeigename" @bind-Value="model.DisplayName" Required="true" RequiredError="Pflichtfeld"
+                          HelperText="z.B. 'Kinder' oder 'Geburtstage'" />
+            <MudColorPicker Label="Farbe" @bind-Value="_color" Class="mt-3" />
+        </MudForm>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Abbrechen</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SubmitAsync">Speichern</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter]
+    private IMudDialogInstance MudDialog { get; set; } = default!;
+
+    [Parameter]
+    public string? InitialDisplayName { get; set; }
+
+    [Parameter]
+    public string? InitialColorHex { get; set; }
+
+    private const string DefaultColorHex = "#4287f5";
+
+    private MudForm form = default!;
+    private InputModel model = new();
+    private MudColor _color = new(DefaultColorHex);
+
+    protected override void OnInitialized()
+    {
+        model = new InputModel
+        {
+            DisplayName = InitialDisplayName ?? "",
+        };
+        _color = new MudColor(string.IsNullOrWhiteSpace(InitialColorHex) ? DefaultColorHex : InitialColorHex);
+    }
+
+    private async Task SubmitAsync()
+    {
+        await form.ValidateAsync();
+        if (!form.IsValid)
+        {
+            return;
+        }
+
+        model.ColorHex = _color.ToString(MudColorOutputFormats.Hex);
+        MudDialog.Close(DialogResult.Ok(model));
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+
+    public sealed class InputModel
+    {
+        [Required]
+        public string DisplayName { get; set; } = "";
+
+        public string? ColorHex { get; set; }
+    }
+}

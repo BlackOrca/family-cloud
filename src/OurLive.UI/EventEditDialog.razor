@@ -3,18 +3,19 @@
 
 <MudDialog>
     <DialogContent>
-        <EventEditForm ExistingEvent="ExistingEvent" OnSave="HandleSave" OnDelete="HandleDelete" OnCancel="Cancel" />
+        <EventEditForm ExistingEvent="ExistingEvent" WritableCalendars="WritableCalendars" OnSave="HandleSave" OnDelete="HandleDelete" OnCancel="Cancel" />
     </DialogContent>
 </MudDialog>
 
 @code {
     [CascadingParameter] private IMudDialogInstance MudDialog { get; set; } = default!;
     [Parameter] public EventDto? ExistingEvent { get; set; }
+    [Parameter] public IReadOnlyList<CalendarDto> WritableCalendars { get; set; } = [];
 
     private void Cancel() => MudDialog.Cancel();
 
-    private void HandleSave(EventWriteRequest request) =>
-        MudDialog.Close(DialogResult.Ok(new EventEditDialogResult(EventEditDialogAction.Save, request)));
+    private void HandleSave((Guid? CalendarId, EventWriteRequest Request) save) =>
+        MudDialog.Close(DialogResult.Ok(new EventEditDialogResult(EventEditDialogAction.Save, save.Request, save.CalendarId)));
 
     private void HandleDelete() =>
         MudDialog.Close(DialogResult.Ok(new EventEditDialogResult(EventEditDialogAction.Delete)));

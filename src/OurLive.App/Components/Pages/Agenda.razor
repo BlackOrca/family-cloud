@@ -138,13 +138,14 @@ else if (AuthState.IsAuthenticated)
 
     private async Task OpenCreateDialogAsync()
     {
-        var writableCalendarId = _calendars.FirstOrDefault(c => c.CanWrite)?.Id;
-        if (writableCalendarId is not { } calendarId)
+        var writableCalendars = _calendars.Where(c => c.CanWrite).ToList();
+        if (writableCalendars.Count == 0)
         {
             return;
         }
 
-        var dialog = await DialogService.ShowAsync<EventEditDialog>("Neuer Termin");
+        var parameters = new DialogParameters<EventEditDialog> { { x => x.WritableCalendars, writableCalendars } };
+        var dialog = await DialogService.ShowAsync<EventEditDialog>("Neuer Termin", parameters);
         var dialogResult = await dialog.Result;
         if (dialogResult is null || dialogResult.Canceled || dialogResult.Data is not EventEditDialogResult { Action: EventEditDialogAction.Save } result)
         {
@@ -153,7 +154,7 @@ else if (AuthState.IsAuthenticated)
 
         try
         {
-            var writeResult = await Api.CreateEventAsync(calendarId, result.Request!);
+            var writeResult = await Api.CreateEventAsync(result.CalendarId!.Value, result.Request!);
             await HandleWriteResultAsync(writeResult, "erstellt");
         }
         catch (Exception)

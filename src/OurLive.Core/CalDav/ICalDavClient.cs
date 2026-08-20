@@ -22,4 +22,13 @@ public interface ICalDavClient
 
     /// <summary>Deletes an event resource, conditional on it still matching <paramref name="etag"/>.</summary>
     Task DeleteEventAsync(Uri eventUrl, string etag, CalDavCredentials credentials, CancellationToken ct = default);
+
+    /// <summary>Creates a new calendar collection at the given (client-chosen) URI, which must not already exist.</summary>
+    Task CreateCalendarAsync(Uri calendarUrl, string displayName, string? colorHex, CalDavCredentials credentials, CancellationToken ct = default);
+
+    /// <summary>Updates a calendar collection's display name and color.</summary>
+    Task UpdateCalendarAsync(Uri calendarUrl, string displayName, string? colorHex, CalDavCredentials credentials, CancellationToken ct = default);
+
+    /// <summary>Deletes a calendar collection and everything in it.</summary>
+    Task DeleteCalendarAsync(Uri calendarUrl, CalDavCredentials credentials, CancellationToken ct = default);
 }

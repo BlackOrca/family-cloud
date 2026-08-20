@@ -53,6 +53,39 @@ internal static class CalDavXmlRequests
                             new XAttribute("end", ToCalDavTime(end))))))));
     }
 
+    public static string MkCalendar(string displayName, string? colorHex)
+    {
+        var d = CalDavXml.Dav;
+        var c = CalDavXml.CalDav;
+        var cs = CalDavXml.CalendarServer;
+        var prop = new XElement(d + "prop",
+            new XElement(d + "displayname", displayName),
+            new XElement(c + "supported-calendar-component-set",
+                new XElement(c + "comp", new XAttribute("name", "VEVENT"))));
+        if (colorHex is not null)
+        {
+            prop.Add(new XElement(cs + "calendar-color", colorHex));
+        }
+
+        return Serialize(new XElement(c + "mkcalendar",
+            new XElement(d + "set", prop)));
+    }
+
+    public static string UpdateCalendarProps(string displayName, string? colorHex)
+    {
+        var d = CalDavXml.Dav;
+        var cs = CalDavXml.CalendarServer;
+        var prop = new XElement(d + "prop",
+            new XElement(d + "displayname", displayName));
+        if (colorHex is not null)
+        {
+            prop.Add(new XElement(cs + "calendar-color", colorHex));
+        }
+
+        return Serialize(new XElement(d + "propertyupdate",
+            new XElement(d + "set", prop)));
+    }
+
     private static string ToCalDavTime(DateTimeOffset value) =>
         value.UtcDateTime.ToString("yyyyMMdd'T'HHmmss'Z'", CultureInfo.InvariantCulture);
 

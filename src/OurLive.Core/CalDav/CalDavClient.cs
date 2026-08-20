@@ -9,6 +9,8 @@ public class CalDavClient(HttpClient httpClient) : ICalDavClient
 {
     private static readonly HttpMethod PropFindMethod = new("PROPFIND");
     private static readonly HttpMethod ReportMethod = new("REPORT");
+    private static readonly HttpMethod MkCalendarMethod = new("MKCALENDAR");
+    private static readonly HttpMethod PropPatchMethod = new("PROPPATCH");
 
     public async Task<Uri> DiscoverCalendarHomeAsync(Uri serverUrl, CalDavCredentials credentials, CancellationToken ct = default)
     {
@@ -76,14 +78,36 @@ public class CalDavClient(HttpClient httpClient) : ICalDavClient
         }
     }
 
-    private async Task<string> SendXmlAsync(HttpMethod method, Uri uri, string xmlBody, int depth, CalDavCredentials credentials, CancellationToken ct)
+    public async Task CreateCalendarAsync(Uri calendarUrl, string displayName, string? colorHex, CalDavCredentials credentials, CancellationToken ct = default) =>
+        await SendXmlAsync(MkCalendarMethod, calendarUrl, CalDavXmlRequests.MkCalendar(displayName, colorHex), depth: null, credentials, ct);
+
+    public async Task UpdateCalendarAsync(Uri calendarUrl, string displayName, string? colorHex, CalDavCredentials credentials, CancellationToken ct = default) =>
+        await SendXmlAsync(PropPatchMethod, calendarUrl, CalDavXmlRequests.UpdateCalendarProps(displayName, colorHex), depth: null, credentials, ct);
+
+    public async Task DeleteCalendarAsync(Uri calendarUrl, CalDavCredentials credentials, CancellationToken ct = default)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Delete, calendarUrl);
+        SetAuth(request, credentials);
+
+        using var response = await SendAsync(request, ct);
+        if (!response.IsSuccessStatusCode && response.StatusCode != HttpStatusCode.NotFound)
+        {
+            var body = await response.Content.ReadAsStringAsync(ct);
+            throw new CalDavException($"DELETE {calendarUrl} failed with {(int)response.StatusCode} {response.ReasonPhrase}: {body}", response.StatusCode);
+        }
+    }
+
+    private async Task<string> SendXmlAsync(HttpMethod method, Uri uri, string xmlBody, int? depth, CalDavCredentials credentials, CancellationToken ct)
     {
         using var request = new HttpRequestMessage(method, uri)
         {
             Content = new StringContent(xmlBody, Encoding.UTF8, "application/xml"),
         };
         SetAuth(request, credentials);
-        request.Headers.TryAddWithoutValidation("Depth", depth.ToString());
+        if (depth is not null)
+        {
+            request.Headers.TryAddWithoutValidation("Depth", depth.Value.ToString());
+        }
 
         using var response = await SendAsync(request, ct);
         var responseBody = await response.Content.ReadAsStringAsync(ct);

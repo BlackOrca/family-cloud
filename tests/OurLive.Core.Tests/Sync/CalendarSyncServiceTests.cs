@@ -78,6 +78,83 @@ public class CalendarSyncServiceTests : IDisposable
         Assert.Equal("ctag-new", calendar.CTag);
     }
 
+    [Fact]
+    public async Task CreateCalendarAsync_creates_the_collection_and_adds_a_local_calendar_row()
+    {
+        var account = NewAccount();
+        db.Context.CalendarAccounts.Add(account);
+        await db.Context.SaveChangesAsync();
+
+        var homeUrl = new Uri("http://localhost:5232/testuser/");
+        calDavClient.DiscoverCalendarHome = (_, _, _) => Task.FromResult(homeUrl);
+
+        Uri? createdUrl = null;
+        calDavClient.CreateCalendar = (url, displayName, colorHex, _, _) =>
+        {
+            createdUrl = url;
+            Assert.Equal("Kinder", displayName);
+            Assert.Equal("#4287f5", colorHex);
+            return Task.CompletedTask;
+        };
+
+        var calendar = await Service.CreateCalendarAsync(account, Credentials, "Kinder", "#4287f5");
+
+        var stored = Assert.Single(db.Context.Calendars);
+        Assert.Equal(calendar.Id, stored.Id);
+        Assert.Equal(account.Id, stored.CalendarAccountId);
+        Assert.Equal("Kinder", stored.DisplayName);
+        Assert.Equal("#4287f5", stored.ColorHex);
+        Assert.StartsWith("/testuser/", stored.CalDavHref);
+        Assert.NotNull(createdUrl);
+        Assert.Equal(stored.CalDavHref, createdUrl!.AbsolutePath);
+    }
+
+    [Fact]
+    public async Task UpdateCalendarAsync_updates_the_collection_and_the_local_row()
+    {
+        var (account, calendar) = NewAccountWithCalendar();
+        db.Context.CalendarAccounts.Add(account);
+        db.Context.Calendars.Add(calendar);
+        await db.Context.SaveChangesAsync();
+
+        Uri? updatedUrl = null;
+        calDavClient.UpdateCalendar = (url, displayName, colorHex, _, _) =>
+        {
+            updatedUrl = url;
+            Assert.Equal("Neuer Name", displayName);
+            Assert.Equal("#00ff00", colorHex);
+            return Task.CompletedTask;
+        };
+
+        await Service.UpdateCalendarAsync(account, calendar, Credentials, "Neuer Name", "#00ff00");
+
+        var stored = Assert.Single(db.Context.Calendars);
+        Assert.Equal("Neuer Name", stored.DisplayName);
+        Assert.Equal("#00ff00", stored.ColorHex);
+        Assert.Equal(calendar.CalDavHref, updatedUrl!.AbsolutePath);
+    }
+
+    [Fact]
+    public async Task DeleteCalendarAsync_deletes_the_collection_and_removes_the_local_row()
+    {
+        var (account, calendar) = NewAccountWithCalendar();
+        db.Context.CalendarAccounts.Add(account);
+        db.Context.Calendars.Add(calendar);
+        await db.Context.SaveChangesAsync();
+
+        Uri? deletedUrl = null;
+        calDavClient.DeleteCalendar = (url, _, _) =>
+        {
+            deletedUrl = url;
+            return Task.CompletedTask;
+        };
+
+        await Service.DeleteCalendarAsync(account, calendar, Credentials);
+
+        Assert.Empty(db.Context.Calendars);
+        Assert.Equal(calendar.CalDavHref, deletedUrl!.AbsolutePath);
+    }
+
     private static string EventIcs(string uid, string summary) =>
         $"""
          BEGIN:VCALENDAR

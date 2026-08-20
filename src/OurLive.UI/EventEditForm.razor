@@ -5,7 +5,21 @@
    a household needs. *@
 
 <MudForm @ref="_form" Model="this">
-    <MudTextField T="string" @bind-Value="_summary" Label="Titel" Required="true" RequiredError="Titel wird benötigt" Disabled="IsBusy" />
+    @if (ExistingEvent is null && WritableCalendars.Count > 1)
+    {
+        <MudSelect T="Guid" @bind-Value="_calendarId" Label="Kalender" Required="true" RequiredError="Kalender wird benötigt" Disabled="IsBusy">
+            @foreach (var calendar in WritableCalendars)
+            {
+                <MudSelectItem T="Guid" Value="calendar.Id">
+                    <div style="display:flex; align-items:center; gap:8px;">
+                        <div style="width:12px; height:12px; border-radius:50%; background-color:@(string.IsNullOrWhiteSpace(calendar.ColorHex) ? "var(--mud-palette-primary)" : calendar.ColorHex);"></div>
+                        <MudText>@calendar.DisplayName</MudText>
+                    </div>
+                </MudSelectItem>
+            }
+        </MudSelect>
+    }
+    <MudTextField T="string" @bind-Value="_summary" Label="Titel" Required="true" RequiredError="Titel wird benötigt" Disabled="IsBusy" Class="mt-2" />
     <MudTextField T="string" @bind-Value="_location" Label="Ort" Class="mt-2" Disabled="IsBusy" />
     <MudTextField T="string" @bind-Value="_description" Label="Beschreibung" Lines="3" Class="mt-2" Disabled="IsBusy" />
     <MudCheckBox T="bool" Value="_isAllDay" ValueChanged="OnIsAllDayChanged" Label="Ganztägig" Class="mt-2" Disabled="IsBusy" />
@@ -57,9 +71,11 @@
     private DateRange? _dateRange = new(DateTime.Today, DateTime.Today);
     private TimeSpan? _startTime = DateTime.Now.TimeOfDay;
     private TimeSpan? _endTime;
+    private Guid _calendarId;
 
     [Parameter] public EventDto? ExistingEvent { get; set; }
-    [Parameter] public EventCallback<EventWriteRequest> OnSave { get; set; }
+    [Parameter] public IReadOnlyList<CalendarDto> WritableCalendars { get; set; } = [];
+    [Parameter] public EventCallback<(Guid? CalendarId, EventWriteRequest Request)> OnSave { get; set; }
     [Parameter] public EventCallback OnDelete { get; set; }
     [Parameter] public EventCallback OnCancel { get; set; }
     [Parameter] public bool IsBusy { get; set; }
@@ -94,6 +110,11 @@
             _date = DateTime.Today;
             _dateRange = new DateRange(DateTime.Today, DateTime.Today);
             _startTime = RoundToNextQuarterHour(DateTime.Now.TimeOfDay);
+        }
+
+        if (ExistingEvent is null && _calendarId == Guid.Empty)
+        {
+            _calendarId = WritableCalendars.FirstOrDefault()?.Id ?? Guid.Empty;
         }
     }
 
@@ -159,7 +180,8 @@
             endUtc = _endTime is null ? null : ToOffset(_date.Value.Date + _endTime.Value);
         }
 
-        await OnSave.InvokeAsync(new EventWriteRequest(_summary, _location, _description, startUtc, endUtc, _isAllDay));
+        var calendarId = ExistingEvent is null ? (Guid?)_calendarId : null;
+        await OnSave.InvokeAsync((calendarId, new EventWriteRequest(_summary, _location, _description, startUtc, endUtc, _isAllDay)));
     }
 
     private static DateTimeOffset ToOffset(DateTime local) => new(local, TimeZoneInfo.Local.GetUtcOffset(local));

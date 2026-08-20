@@ -48,6 +48,46 @@ public class CalendarSyncService(ICalDavClient calDavClient, OurLiveDbContext db
         await db.SaveChangesAsync(ct);
     }
 
+    public async Task<Calendar> CreateCalendarAsync(CalendarAccount account, CalDavCredentials credentials, string displayName, string? colorHex, CancellationToken ct = default)
+    {
+        var homeUrl = await calDavClient.DiscoverCalendarHomeAsync(new Uri(account.BaseUrl), credentials, ct);
+        var href = $"{homeUrl.AbsolutePath.TrimEnd('/')}/{Guid.NewGuid():N}/";
+        var calendarUrl = new Uri(homeUrl, href);
+
+        await calDavClient.CreateCalendarAsync(calendarUrl, displayName, colorHex, credentials, ct);
+
+        var calendar = new Calendar
+        {
+            Id = Guid.NewGuid(),
+            CalendarAccountId = account.Id,
+            CalDavHref = href,
+            DisplayName = displayName,
+            ColorHex = colorHex,
+        };
+        db.Calendars.Add(calendar);
+        await db.SaveChangesAsync(ct);
+        return calendar;
+    }
+
+    public async Task UpdateCalendarAsync(CalendarAccount account, Calendar calendar, CalDavCredentials credentials, string displayName, string? colorHex, CancellationToken ct = default)
+    {
+        var calendarUrl = CalDavUris.CalendarUri(account, calendar);
+        await calDavClient.UpdateCalendarAsync(calendarUrl, displayName, colorHex, credentials, ct);
+
+        calendar.DisplayName = displayName;
+        calendar.ColorHex = colorHex;
+        await db.SaveChangesAsync(ct);
+    }
+
+    public async Task DeleteCalendarAsync(CalendarAccount account, Calendar calendar, CalDavCredentials credentials, CancellationToken ct = default)
+    {
+        var calendarUrl = CalDavUris.CalendarUri(account, calendar);
+        await calDavClient.DeleteCalendarAsync(calendarUrl, credentials, ct);
+
+        db.Calendars.Remove(calendar);
+        await db.SaveChangesAsync(ct);
+    }
+
     public async Task SyncEventsAsync(CalendarAccount account, Calendar calendar, CalDavCredentials credentials, DateTimeOffset start, DateTimeOffset end, CancellationToken ct = default)
     {
         var calendarUri = CalDavUris.CalendarUri(account, calendar);

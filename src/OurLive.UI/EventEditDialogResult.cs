@@ -8,4 +8,4 @@ public enum EventEditDialogAction
     Delete,
 }
 
-public sealed record EventEditDialogResult(EventEditDialogAction Action, EventWriteRequest? Request = null);
+public sealed record EventEditDialogResult(EventEditDialogAction Action, EventWriteRequest? Request = null, Guid? CalendarId = null);
