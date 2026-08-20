@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging;
+using Microsoft.Maui.LifecycleEvents;
 using MudBlazor.Services;
 using OurLive.App.Services;
 
@@ -23,6 +24,7 @@ public static class MauiProgram
 		builder.Services.AddSingleton<AppTitleState>();
 		builder.Services.AddSingleton<AuthTokenStore>();
 		builder.Services.AddSingleton<ServerAddressStore>();
+		builder.Services.AddSingleton<SyncCoordinator>();
 		builder.Services.AddTransient<AuthTokenHandler>();
 		builder.Services.AddHttpClient<ApiClient>((sp, client) =>
 			{
@@ -36,6 +38,19 @@ public static class MauiProgram
 		builder.Logging.AddDebug();
 #endif
 
-		return builder.Build();
+		// The polling loop should only run while the app is actually on screen — pause it when the
+		// user backgrounds the app so it doesn't keep hitting the server for nothing.
+		MauiApp? mauiApp = null;
+		builder.ConfigureLifecycleEvents(events =>
+		{
+#if ANDROID
+			events.AddAndroid(android => android
+				.OnResume(_ => mauiApp?.Services.GetService<SyncCoordinator>()?.Resume())
+				.OnStop(_ => mauiApp?.Services.GetService<SyncCoordinator>()?.Pause()));
+#endif
+		});
+
+		mauiApp = builder.Build();
+		return mauiApp;
 	}
 }

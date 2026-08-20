@@ -36,14 +36,17 @@
     [Inject] private AppTitleState TitleState { get; set; } = default!;
     [Inject] private AuthTokenStore TokenStore { get; set; } = default!;
     [Inject] private ApiClient Api { get; set; } = default!;
+    [Inject] private SyncCoordinator Sync { get; set; } = default!;
 
     private bool _isDarkMode;
     private bool _drawerOpen;
+    private IDisposable? _settingsSub;
 
     protected override void OnInitialized()
     {
         AuthState.Changed += OnAuthChanged;
         TitleState.Changed += OnTitleChanged;
+        _settingsSub = Sync.Subscribe(SyncResourceType.Settings, _ => LoadTitleAsync());
         _ = LoadTitleAsync();
     }
 
@@ -78,5 +81,6 @@
     {
         AuthState.Changed -= OnAuthChanged;
         TitleState.Changed -= OnTitleChanged;
+        _settingsSub?.Dispose();
     }
 }

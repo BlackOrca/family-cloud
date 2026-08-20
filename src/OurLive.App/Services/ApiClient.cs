@@ -3,6 +3,7 @@ using System.Net.Http.Json;
 using OurLive.Contracts.Auth;
 using OurLive.Contracts.Calendars;
 using OurLive.Contracts.Settings;
+using OurLive.Contracts.Sync;
 
 namespace OurLive.App.Services;
 
@@ -14,6 +15,12 @@ internal sealed class ApiClient(HttpClient http)
 
     public async Task<AppSettingsDto?> GetSettingsAsync(CancellationToken ct = default) =>
         await http.GetFromJsonAsync<AppSettingsDto>("api/settings", ct);
+
+    public async Task<SyncChangesResponse?> GetSyncChangesAsync(long? since, CancellationToken ct = default)
+    {
+        var query = since is { } cursor ? $"api/sync/changes?since={cursor}" : "api/sync/changes";
+        return await http.GetFromJsonAsync<SyncChangesResponse>(query, ct);
+    }
 
     public async Task<LoginResponse?> LoginAsync(string userName, string password, CancellationToken ct = default)
     {

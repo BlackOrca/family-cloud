@@ -1,3 +1,4 @@
+using OurLive.Contracts.Sync;
 using OurLive.Core.CalDav;
 using OurLive.Core.Data;
 using OurLive.Core.Domain;
@@ -9,7 +10,7 @@ namespace OurLive.Core.Sync;
 /// Writes events through to the CalDAV server and keeps the local cache in sync with the result —
 /// the counterpart to <see cref="CalendarSyncService"/>'s read-only pull.
 /// </summary>
-public class CalendarWriteService(ICalDavClient calDavClient, OurLiveDbContext db)
+public class CalendarWriteService(ICalDavClient calDavClient, OurLiveDbContext db, SyncEventPublisher syncEvents)
 {
     public async Task<CachedEvent> CreateEventAsync(
         CalendarAccount account, Calendar calendar, CalDavCredentials credentials,
@@ -38,6 +39,7 @@ public class CalendarWriteService(ICalDavClient calDavClient, OurLiveDbContext d
             LastSyncedUtc = DateTimeOffset.UtcNow,
         };
         db.CachedEvents.Add(cached);
+        syncEvents.Publish(SyncResourceType.Calendar, calendar.Id.ToString());
         await db.SaveChangesAsync(ct);
         return cached;
     }
@@ -57,6 +59,7 @@ public class CalendarWriteService(ICalDavClient calDavClient, OurLiveDbContext d
         existing.ETag = etag;
         existing.RawIcs = ics;
         existing.LastSyncedUtc = DateTimeOffset.UtcNow;
+        syncEvents.Publish(SyncResourceType.Calendar, calendar.Id.ToString());
         await db.SaveChangesAsync(ct);
         return existing;
     }
@@ -71,6 +74,7 @@ public class CalendarWriteService(ICalDavClient calDavClient, OurLiveDbContext d
         await calDavClient.DeleteEventAsync(eventUri, existing.ETag ?? "", credentials, ct);
 
         db.CachedEvents.Remove(existing);
+        syncEvents.Publish(SyncResourceType.Calendar, calendar.Id.ToString());
         await db.SaveChangesAsync(ct);
     }
 }

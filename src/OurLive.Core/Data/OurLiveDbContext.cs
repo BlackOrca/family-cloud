@@ -18,6 +18,8 @@ public class OurLiveDbContext(DbContextOptions<OurLiveDbContext> options)
 
     public DbSet<AppSettings> AppSettings => Set<AppSettings>();
 
+    public DbSet<SyncEvent> SyncEvents => Set<SyncEvent>();
+
     protected override void OnModelCreating(ModelBuilder builder)
     {
         base.OnModelCreating(builder);
@@ -30,6 +32,11 @@ public class OurLiveDbContext(DbContextOptions<OurLiveDbContext> options)
         builder.Entity<AppSettings>(e =>
         {
             e.Property(s => s.Title).HasMaxLength(200);
+        });
+
+        builder.Entity<SyncEvent>(e =>
+        {
+            e.Property(s => s.ResourceId).HasMaxLength(64);
         });
 
         builder.Entity<Calendar>(e =>

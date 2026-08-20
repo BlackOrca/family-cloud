@@ -1,4 +1,5 @@
 using System.Net;
+using OurLive.Contracts.Sync;
 using OurLive.Core.CalDav;
 using OurLive.Core.Domain;
 using OurLive.Core.Sync;
@@ -12,7 +13,7 @@ public class CalendarWriteServiceTests : IDisposable
     private readonly SqliteTestDb db = new();
     private readonly FakeCalDavClient calDavClient = new();
 
-    private CalendarWriteService Service => new(calDavClient, db.Context);
+    private CalendarWriteService Service => new(calDavClient, db.Context, new SyncEventPublisher(db.Context));
 
     private static (CalendarAccount Account, Calendar Calendar) NewAccountWithCalendar()
     {
@@ -66,6 +67,10 @@ public class CalendarWriteServiceTests : IDisposable
         Assert.Equal("Zahnarzttermin", created.Summary);
         Assert.Equal($"/testuser/household/{created.UId}.ics", created.Href);
         Assert.Same(created, Assert.Single(db.Context.CachedEvents));
+
+        var syncEvent = Assert.Single(db.Context.SyncEvents);
+        Assert.Equal(SyncResourceType.Calendar, syncEvent.ResourceType);
+        Assert.Equal(calendar.Id.ToString(), syncEvent.ResourceId);
     }
 
     [Fact]
@@ -118,6 +123,10 @@ public class CalendarWriteServiceTests : IDisposable
         Assert.Equal("\"etag-new\"", updated.ETag);
         Assert.Equal("Neuer Titel", updated.Summary);
         Assert.Same(existing, updated);
+
+        var syncEvent = Assert.Single(db.Context.SyncEvents);
+        Assert.Equal(SyncResourceType.Calendar, syncEvent.ResourceType);
+        Assert.Equal(calendar.Id.ToString(), syncEvent.ResourceId);
     }
 
     [Fact]
@@ -196,6 +205,10 @@ public class CalendarWriteServiceTests : IDisposable
         Assert.Equal(new Uri("http://localhost:5232/testuser/household/event-1@ourlive.ics"), deletedUri);
         Assert.Equal("\"etag-1\"", deletedEtag);
         Assert.Empty(db.Context.CachedEvents);
+
+        var syncEvent = Assert.Single(db.Context.SyncEvents);
+        Assert.Equal(SyncResourceType.Calendar, syncEvent.ResourceType);
+        Assert.Equal(calendar.Id.ToString(), syncEvent.ResourceId);
     }
 
     public void Dispose() => db.Dispose();

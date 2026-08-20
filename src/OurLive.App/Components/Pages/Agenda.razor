@@ -50,6 +50,7 @@ else if (AuthState.IsAuthenticated)
     [Inject] private AuthTokenStore TokenStore { get; set; } = default!;
     [Inject] private AppAuthState AuthState { get; set; } = default!;
     [Inject] private ServerAddressStore AddressStore { get; set; } = default!;
+    [Inject] private SyncCoordinator Sync { get; set; } = default!;
     [Inject] private NavigationManager Nav { get; set; } = default!;
     [Inject] private IDialogService DialogService { get; set; } = default!;
     [Inject] private ISnackbar Snackbar { get; set; } = default!;
@@ -61,10 +62,12 @@ else if (AuthState.IsAuthenticated)
     private List<EventDto> _events = [];
     private HashSet<Guid> _selectedCalendarIds = [];
     private string? _loadError;
+    private IDisposable? _calendarSub;
 
     protected override async Task OnInitializedAsync()
     {
         AuthState.Changed += OnAuthChanged;
+        _calendarSub = Sync.Subscribe(SyncResourceType.Calendar, OnCalendarChangedAsync);
 
         if (AddressStore.Load() is null)
         {
@@ -227,8 +230,29 @@ else if (AuthState.IsAuthenticated)
         });
     }
 
+    private async Task OnCalendarChangedAsync(string? resourceId)
+    {
+        if (_isLoading || !AuthState.IsAuthenticated)
+        {
+            return;
+        }
+
+        try
+        {
+            await ReloadEventsAsync();
+        }
+        catch (Exception)
+        {
+            // Offline/unreachable — the next successful poll will catch up.
+            return;
+        }
+
+        await InvokeAsync(StateHasChanged);
+    }
+
     public void Dispose()
     {
         AuthState.Changed -= OnAuthChanged;
+        _calendarSub?.Dispose();
     }
 }

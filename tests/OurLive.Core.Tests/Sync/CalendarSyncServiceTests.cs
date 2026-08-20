@@ -1,3 +1,4 @@
+using OurLive.Contracts.Sync;
 using OurLive.Core.CalDav;
 using OurLive.Core.CalDav.Models;
 using OurLive.Core.Domain;
@@ -12,7 +13,7 @@ public class CalendarSyncServiceTests : IDisposable
     private readonly SqliteTestDb db = new();
     private readonly FakeCalDavClient calDavClient = new();
 
-    private CalendarSyncService Service => new(calDavClient, db.Context);
+    private CalendarSyncService Service => new(calDavClient, db.Context, new SyncEventPublisher(db.Context));
 
     private CalendarAccount NewAccount() => new()
     {
@@ -204,6 +205,10 @@ public class CalendarSyncServiceTests : IDisposable
         Assert.Equal("Zahnarzt", cached.Summary);
         Assert.Equal("\"etag-1\"", cached.ETag);
         Assert.NotNull(calendar.LastSyncedUtc);
+
+        var syncEvent = Assert.Single(db.Context.SyncEvents);
+        Assert.Equal(SyncResourceType.Calendar, syncEvent.ResourceType);
+        Assert.Equal(calendar.Id.ToString(), syncEvent.ResourceId);
     }
 
     [Fact]
@@ -274,6 +279,73 @@ public class CalendarSyncServiceTests : IDisposable
         var cached = Assert.Single(db.Context.CachedEvents);
         Assert.Equal("Unveränderter Titel", cached.Summary);
         Assert.Equal(lastSynced, cached.LastSyncedUtc);
+        Assert.Empty(db.Context.SyncEvents);
+    }
+
+    [Fact]
+    public async Task SyncEventsAsync_removes_a_cached_event_no_longer_present_upstream_within_the_window()
+    {
+        var (account, calendar) = NewAccountWithCalendar();
+        var staleEvent = new CachedEvent
+        {
+            Id = Guid.NewGuid(),
+            CalendarId = calendar.Id,
+            UId = "deleted-event@ourlive",
+            Href = "/testuser/household/deleted-event.ics",
+            ETag = "\"etag-1\"",
+            Summary = "Wurde extern gelöscht",
+            StartUtc = DateTimeOffset.UtcNow,
+            RawIcs = EventIcs("deleted-event@ourlive", "Wurde extern gelöscht"),
+            LastSyncedUtc = DateTimeOffset.UtcNow.AddDays(-1),
+        };
+        db.Context.CalendarAccounts.Add(account);
+        db.Context.Calendars.Add(calendar);
+        db.Context.CachedEvents.Add(staleEvent);
+        await db.Context.SaveChangesAsync();
+
+        // Radicale no longer returns this event at all — it was deleted upstream.
+        calDavClient.QueryEvents = (_, _, _, _, _) => Task.FromResult<IReadOnlyList<CalDavEventResource>>([]);
+
+        var start = DateTimeOffset.UtcNow.AddDays(-1);
+        var end = DateTimeOffset.UtcNow.AddDays(1);
+        await Service.SyncEventsAsync(account, calendar, Credentials, start, end);
+
+        Assert.Empty(db.Context.CachedEvents);
+        var syncEvent = Assert.Single(db.Context.SyncEvents);
+        Assert.Equal(SyncResourceType.Calendar, syncEvent.ResourceType);
+    }
+
+    [Fact]
+    public async Task SyncEventsAsync_does_not_remove_a_cached_event_outside_the_queried_window()
+    {
+        var (account, calendar) = NewAccountWithCalendar();
+        var outOfWindowEvent = new CachedEvent
+        {
+            Id = Guid.NewGuid(),
+            CalendarId = calendar.Id,
+            UId = "far-future-event@ourlive",
+            Href = "/testuser/household/far-future-event.ics",
+            ETag = "\"etag-1\"",
+            Summary = "Weit in der Zukunft",
+            StartUtc = DateTimeOffset.UtcNow.AddYears(1),
+            RawIcs = EventIcs("far-future-event@ourlive", "Weit in der Zukunft"),
+            LastSyncedUtc = DateTimeOffset.UtcNow.AddDays(-1),
+        };
+        db.Context.CalendarAccounts.Add(account);
+        db.Context.Calendars.Add(calendar);
+        db.Context.CachedEvents.Add(outOfWindowEvent);
+        await db.Context.SaveChangesAsync();
+
+        // Radicale is only queried for a near-term window and returns nothing — the far-future
+        // cached event wasn't in scope for this pass, so it must not be treated as deleted.
+        calDavClient.QueryEvents = (_, _, _, _, _) => Task.FromResult<IReadOnlyList<CalDavEventResource>>([]);
+
+        var start = DateTimeOffset.UtcNow.AddDays(-1);
+        var end = DateTimeOffset.UtcNow.AddDays(1);
+        await Service.SyncEventsAsync(account, calendar, Credentials, start, end);
+
+        Assert.Single(db.Context.CachedEvents);
+        Assert.Empty(db.Context.SyncEvents);
     }
 
     public void Dispose() => db.Dispose();
