@@ -14,7 +14,7 @@
                 <MudText Class="mr-4" Typo="Typo.body2">@context.User.Identity?.Name</MudText>
                 <form action="Account/Logout" method="post">
                     <AntiforgeryToken />
-                    <input type="hidden" name="ReturnUrl" value="/" />
+                    <input type="hidden" name="ReturnUrl" value="" />
                     <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Text" Color="Color.Inherit">Abmelden</MudButton>
                 </form>
             </Authorized>

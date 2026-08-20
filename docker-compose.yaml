@@ -1,4 +1,14 @@
 services:
+  ourlive-dashboard:
+    image: "mcr.microsoft.com/dotnet/nightly/aspire-dashboard:13.5"
+    ports:
+      - "18888"
+    expose:
+      - "18889"
+      - "18890"
+    networks:
+      - "aspire"
+    restart: "always"
   radicale:
     image: "tomsquest/docker-radicale:latest"
     environment:
@@ -9,9 +19,8 @@ services:
       - type: "bind"
         target: "/data"
         source: "./data/radicale"
-    restart: unless-stopped
     networks:
-      - "ourlive"
+      - "aspire"
   server:
     image: "${SERVER_IMAGE}"
     environment:
@@ -37,9 +46,8 @@ services:
       radicale:
         condition: "service_started"
     user: "0:0"
-    restart: unless-stopped
     networks:
-      - "ourlive"
+      - "aspire"
 networks:
-  ourlive:
+  aspire:
     driver: "bridge"

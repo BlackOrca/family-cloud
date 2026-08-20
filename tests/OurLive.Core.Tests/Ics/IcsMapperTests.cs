@@ -96,6 +96,59 @@ public class IcsMapperTests
     }
 
     [Fact]
+    public void BuildNewEventIcs_keeps_local_dates_for_a_multi_day_all_day_event_in_a_positive_offset_timezone()
+    {
+        var offset = TimeSpan.FromHours(2);
+        var start = new DateTimeOffset(2026, 8, 20, 0, 0, 0, offset);
+        var end = new DateTimeOffset(2026, 8, 23, 0, 0, 0, offset); // exclusive end, already +1 day past the last day
+
+        var ics = IcsMapper.BuildNewEventIcs("multi-day@ourlive", "Urlaub", null, null, start, end, isAllDay: true);
+
+        Assert.Contains("DTSTART;VALUE=DATE:20260820", ics);
+        Assert.Contains("DTEND;VALUE=DATE:20260823", ics);
+    }
+
+    [Fact]
+    public void BuildNewEventIcs_keeps_local_date_for_a_single_day_all_day_event_in_a_positive_offset_timezone()
+    {
+        var offset = TimeSpan.FromHours(2);
+        var start = new DateTimeOffset(2026, 9, 1, 0, 0, 0, offset);
+        var end = new DateTimeOffset(2026, 9, 2, 0, 0, 0, offset);
+
+        var ics = IcsMapper.BuildNewEventIcs("single-day@ourlive", "Geburtstag", null, null, start, end, isAllDay: true);
+
+        Assert.Contains("DTSTART;VALUE=DATE:20260901", ics);
+        Assert.Contains("DTEND;VALUE=DATE:20260902", ics);
+    }
+
+    [Fact]
+    public void ApplyEventFields_keeps_local_dates_for_a_multi_day_all_day_event_in_a_positive_offset_timezone()
+    {
+        const string existingIcs =
+            """
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            PRODID:-//OurLive//Test//EN
+            BEGIN:VEVENT
+            UID:multi-day@ourlive
+            DTSTAMP:20260819T120000Z
+            DTSTART;VALUE=DATE:20260101
+            DTEND;VALUE=DATE:20260102
+            SUMMARY:Alter Titel
+            END:VEVENT
+            END:VCALENDAR
+            """;
+        var offset = TimeSpan.FromHours(2);
+        var start = new DateTimeOffset(2026, 8, 20, 0, 0, 0, offset);
+        var end = new DateTimeOffset(2026, 8, 23, 0, 0, 0, offset);
+
+        var ics = IcsMapper.ApplyEventFields(existingIcs, "Urlaub", null, null, start, end, isAllDay: true);
+
+        Assert.Contains("DTSTART;VALUE=DATE:20260820", ics);
+        Assert.Contains("DTEND;VALUE=DATE:20260823", ics);
+    }
+
+    [Fact]
     public void ToCachedEvent_throws_when_the_resource_has_no_VEVENT()
     {
         const string ics =

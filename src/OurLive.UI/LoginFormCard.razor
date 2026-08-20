@@ -7,10 +7,12 @@
         <MudText Typo="Typo.h5" Class="mb-4">@Title</MudText>
 
         <MudForm @ref="_form" Model="this">
-            <MudTextField T="string" @bind-Value="UserName" Label="Benutzername" Required="true"
+            <MudTextField T="string" @bind-Value="UserName" @bind-Value:after="@(() => UserNameChanged.InvokeAsync(UserName))"
+                          Label="Benutzername" Required="true"
                           RequiredError="Benutzername wird benötigt" Disabled="IsBusy"
                           Immediate="true" OnKeyDown="HandleKeyDown" />
-            <MudTextField T="string" @bind-Value="Password" Label="Passwort" Required="true"
+            <MudTextField T="string" @bind-Value="Password" @bind-Value:after="@(() => PasswordChanged.InvokeAsync(Password))"
+                          Label="Passwort" Required="true"
                           RequiredError="Passwort wird benötigt" InputType="InputType.Password"
                           Disabled="IsBusy" Immediate="true" OnKeyDown="HandleKeyDown" Class="mt-2" />
         </MudForm>
@@ -37,7 +39,9 @@
 
     [Parameter] public string Title { get; set; } = "Anmelden";
     [Parameter] public string UserName { get; set; } = "";
+    [Parameter] public EventCallback<string> UserNameChanged { get; set; }
     [Parameter] public string Password { get; set; } = "";
+    [Parameter] public EventCallback<string> PasswordChanged { get; set; }
     [Parameter] public bool IsBusy { get; set; }
     [Parameter] public string? ErrorMessage { get; set; }
     [Parameter] public EventCallback<(string UserName, string Password)> OnSubmit { get; set; }

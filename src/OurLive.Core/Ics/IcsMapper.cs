@@ -98,5 +98,5 @@ public static class IcsMapper
     }
 
     private static CalDateTime ToCalDateTime(DateTimeOffset value, bool isAllDay) =>
-        isAllDay ? new CalDateTime(DateOnly.FromDateTime(value.UtcDateTime)) : new CalDateTime(value.UtcDateTime, "UTC", true);
+        isAllDay ? new CalDateTime(DateOnly.FromDateTime(value.Date)) : new CalDateTime(value.UtcDateTime, "UTC", true);
 }
