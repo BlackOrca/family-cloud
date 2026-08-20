@@ -9,13 +9,6 @@
 }
 else if (AuthState.IsAuthenticated)
 {
-    <MudAppBar Elevation="1">
-        <MudText Typo="Typo.h6">OurLive</MudText>
-        <MudSpacer />
-        <MudText Typo="Typo.body2" Class="mr-2">@AuthState.DisplayName</MudText>
-        <MudIconButton Icon="@Icons.Material.Filled.Logout" Color="Color.Inherit" OnClick="LogoutAsync" />
-    </MudAppBar>
-
     <MudContainer MaxWidth="MaxWidth.Small" Class="mt-4">
         @if (_loadError is not null)
         {
@@ -219,13 +212,6 @@ else if (AuthState.IsAuthenticated)
                 Snackbar.Add("Speichern fehlgeschlagen. Bitte später erneut versuchen.", Severity.Error);
                 break;
         }
-    }
-
-    private async Task LogoutAsync()
-    {
-        TokenStore.Clear();
-        AuthState.SetLoggedOut();
-        await Task.CompletedTask;
     }
 
     private void OnAuthChanged()

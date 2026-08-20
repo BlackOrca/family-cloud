@@ -18,5 +18,12 @@ public class CalendarAccount
 
     public DateTimeOffset? LastDiscoveredUtc { get; set; }
 
+    /// <summary>
+    /// True for the account the server itself provisions and keeps in sync with the bundled
+    /// Radicale instance (see <see cref="Security.RadicaleCredentialProvisioner"/>) — its credentials
+    /// mirror the seed admin's login and are not user-editable.
+    /// </summary>
+    public bool IsManaged { get; set; }
+
     public List<Calendar> Calendars { get; set; } = [];
 }

@@ -1,5 +1,5 @@
 @inherits LayoutComponentBase
-@using OurLive.UI
+@implements IDisposable
 
 <MudThemeProvider Theme="OurLiveTheme.Default" @bind-IsDarkMode="_isDarkMode" />
 <MudPopoverProvider />
@@ -7,11 +7,53 @@
 <MudSnackbarProvider />
 
 <MudLayout>
+    @if (AuthState.IsAuthenticated)
+    {
+        <MudAppBar Elevation="1">
+            <MudIconButton Icon="@Icons.Material.Filled.Menu" Color="Color.Inherit" Edge="Edge.Start" OnClick="@(() => _drawerOpen = !_drawerOpen)" />
+            <MudText Typo="Typo.h6" Class="ml-2">OurLive</MudText>
+            <MudSpacer />
+            <MudText Typo="Typo.body2" Class="mr-2">@AuthState.DisplayName</MudText>
+            <MudIconButton Icon="@Icons.Material.Filled.Logout" Color="Color.Inherit" OnClick="LogoutAsync" />
+        </MudAppBar>
+
+        <MudDrawer @bind-Open="_drawerOpen" Elevation="1" Variant="DrawerVariant.Temporary" Anchor="Anchor.Start">
+            <MudNavMenu>
+                <MudNavLink Href="/" Match="NavLinkMatch.All" Icon="@Icons.Material.Filled.CalendarMonth" OnClick="@(() => _drawerOpen = false)">
+                    Kalender
+                </MudNavLink>
+            </MudNavMenu>
+        </MudDrawer>
+    }
+
     <MudMainContent>
         @Body
     </MudMainContent>
 </MudLayout>
 
 @code {
+    [Inject] private AppAuthState AuthState { get; set; } = default!;
+    [Inject] private AuthTokenStore TokenStore { get; set; } = default!;
+
     private bool _isDarkMode;
+    private bool _drawerOpen;
+
+    protected override void OnInitialized()
+    {
+        AuthState.Changed += OnAuthChanged;
+    }
+
+    private void OnAuthChanged() => InvokeAsync(StateHasChanged);
+
+    private async Task LogoutAsync()
+    {
+        TokenStore.Clear();
+        AuthState.SetLoggedOut();
+        await Task.CompletedTask;
+    }
+
+    public void Dispose()
+    {
+        AuthState.Changed -= OnAuthChanged;
+    }
 }

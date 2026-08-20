@@ -9,6 +9,20 @@ services:
     networks:
       - "aspire"
     restart: "always"
+  radicale-auth-init:
+    image: "busybox:latest"
+    command:
+      - "-c"
+      - "mkdir -p /auth && [ -f /auth/users ] || touch /auth/users"
+    entrypoint:
+      - "sh"
+    volumes:
+      - type: "bind"
+        target: "/auth"
+        source: "./data/radicale-auth"
+    networks:
+      - "aspire"
+    restart: "no"
   radicale:
     image: "tomsquest/docker-radicale:latest"
     environment:
@@ -19,8 +33,19 @@ services:
       - type: "bind"
         target: "/data"
         source: "./data/radicale"
+      - type: "bind"
+        target: "/config/config"
+        source: "./radicale/config"
+        read_only: true
+      - type: "bind"
+        target: "/auth"
+        source: "./data/radicale-auth"
+    depends_on:
+      radicale-auth-init:
+        condition: "service_completed_successfully"
     networks:
       - "aspire"
+    restart: "unless-stopped"
   server:
     image: "${SERVER_IMAGE}"
     environment:
@@ -31,6 +56,8 @@ services:
       Jwt__SigningKey: "${JWT_SIGNING_KEY}"
       SeedAdmin__UserName: "${SEED_ADMIN_USERNAME}"
       SeedAdmin__Password: "${SEED_ADMIN_PASSWORD}"
+      Radicale__BaseUrl: "http://radicale:5232/"
+      Radicale__HtpasswdPath: "/radicale-auth/users"
       OTEL_EXPORTER_OTLP_ENDPOINT: "http://ourlive-dashboard:18889"
       OTEL_EXPORTER_OTLP_PROTOCOL: "grpc"
       OTEL_SERVICE_NAME: "server"
@@ -42,12 +69,16 @@ services:
       - type: "bind"
         target: "/data"
         source: "./data/server"
+      - type: "bind"
+        target: "/radicale-auth"
+        source: "./data/radicale-auth"
     depends_on:
       radicale:
         condition: "service_started"
     user: "0:0"
     networks:
       - "aspire"
+    restart: "unless-stopped"
 networks:
   aspire:
     driver: "bridge"

@@ -50,7 +50,7 @@ public class CalendarSyncService(ICalDavClient calDavClient, OurLiveDbContext db
 
     public async Task SyncEventsAsync(CalendarAccount account, Calendar calendar, CalDavCredentials credentials, DateTimeOffset start, DateTimeOffset end, CancellationToken ct = default)
     {
-        var calendarUri = new Uri(new Uri(account.BaseUrl), calendar.CalDavHref);
+        var calendarUri = CalDavUris.CalendarUri(account, calendar);
         var resources = await calDavClient.QueryEventsAsync(calendarUri, start, end, credentials, ct);
 
         foreach (var resource in resources)
@@ -65,14 +65,9 @@ public class CalendarSyncService(ICalDavClient calDavClient, OurLiveDbContext db
             }
             else if (existing.ETag != mapped.ETag)
             {
+                existing.ApplyContentFields(mapped.Summary, mapped.Location, mapped.Description, mapped.StartUtc, mapped.EndUtc, mapped.IsAllDay);
                 existing.Href = mapped.Href;
                 existing.ETag = mapped.ETag;
-                existing.Summary = mapped.Summary;
-                existing.Location = mapped.Location;
-                existing.Description = mapped.Description;
-                existing.StartUtc = mapped.StartUtc;
-                existing.EndUtc = mapped.EndUtc;
-                existing.IsAllDay = mapped.IsAllDay;
                 existing.RecurrenceRule = mapped.RecurrenceRule;
                 existing.RawIcs = mapped.RawIcs;
                 existing.LastSyncedUtc = mapped.LastSyncedUtc;

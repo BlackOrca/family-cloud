@@ -9,6 +9,7 @@ using Microsoft.IdentityModel.Tokens;
 using MudBlazor.Services;
 using OurLive.Core.CalDav;
 using OurLive.Core.Data;
+using OurLive.Core.Domain;
 using OurLive.Core.Security;
 using OurLive.Core.Sync;
 using OurLive.Server.Api;
@@ -82,6 +83,16 @@ builder.Services.AddDataProtection()
     .PersistKeysToFileSystem(new DirectoryInfo(Path.Combine(dataDirectory, "keys")));
 builder.Services.AddSingleton<ICalDavPasswordProtector, CalDavPasswordProtector>();
 
+// The htpasswd file the bundled Radicale container's [auth] section is configured to read (see the
+// repo-root radicale/config file and its mount in AppHost.cs). Defaults to alongside the SQLite/keys
+// data directory for plain `dotnet run` without Aspire; Radicale__HtpasswdPath overrides it in both
+// the `aspire run` and docker-compose paths, pointing at the mount they actually share with Radicale.
+var radicaleHtpasswdPath = builder.Configuration["Radicale:HtpasswdPath"]
+    ?? Path.Combine(dataDirectory, "radicale-htpasswd", "users");
+var radicaleBaseUrl = builder.Configuration["Radicale:BaseUrl"] ?? "http://radicale:5232/";
+builder.Services.AddSingleton<IRadicaleCredentialProvisioner>(
+    _ => new RadicaleCredentialProvisioner(radicaleHtpasswdPath));
+
 builder.Services.AddIdentityCore<AppUser>(options =>
     {
         // No email flow: an admin creates accounts directly via the admin UI (Phase 3), so there's
@@ -125,6 +136,26 @@ await using (var scope = app.Services.CreateAsyncScope())
                     $"Failed to seed admin user: {string.Join(", ", result.Errors.Select(e => e.Description))}");
             }
             app.Logger.LogInformation("Seeded initial admin user {UserName}.", seedUserName);
+
+            // Mirror the seed admin's credentials into the bundled Radicale instance so server<->Radicale
+            // communication is actually authenticated (it ships with auth disabled otherwise), and record
+            // a matching, system-managed CalendarAccount so the admin doesn't have to add it by hand.
+            var radicaleProvisioner = scope.ServiceProvider.GetRequiredService<IRadicaleCredentialProvisioner>();
+            await radicaleProvisioner.ProvisionAsync(seedUserName, seedPassword);
+
+            var passwordProtector = scope.ServiceProvider.GetRequiredService<ICalDavPasswordProtector>();
+            db.CalendarAccounts.Add(new CalendarAccount
+            {
+                Id = Guid.NewGuid(),
+                DisplayName = "Radicale (integriert)",
+                BaseUrl = radicaleBaseUrl,
+                Username = seedUserName,
+                EncryptedAppPassword = passwordProtector.Encrypt(seedPassword),
+                IsManaged = true,
+                CreatedUtc = DateTimeOffset.UtcNow,
+            });
+            await db.SaveChangesAsync();
+            app.Logger.LogInformation("Provisioned managed Radicale account for {UserName}.", seedUserName);
         }
         else
         {
@@ -161,3 +192,6 @@ app.MapAuthEndpoints();
 app.MapCalendarsEndpoints();
 
 app.Run();
+
+// Exposes the top-level Program for WebApplicationFactory<Program> in OurLive.Server.Tests.
+public partial class Program;

@@ -1,0 +1,14 @@
+[auth]
+type = htpasswd
+htpasswd_filename = /auth/users
+htpasswd_encryption = bcrypt
+
+[rights]
+type = owner_only
+
+# This custom config file replaces the image's default wholesale (see AppHost.cs's bind mount of
+# this file to /config/config), which otherwise sets this to /data/collections — matching the /data
+# volume already mounted into this container. Without it Radicale falls back to its own built-in
+# default of /var/lib/radicale/collections, which the non-root radicale user can't write to.
+[storage]
+filesystem_folder = /data/collections

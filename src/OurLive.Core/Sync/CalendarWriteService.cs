@@ -18,7 +18,7 @@ public class CalendarWriteService(ICalDavClient calDavClient, OurLiveDbContext d
     {
         var uid = Guid.NewGuid().ToString();
         var ics = IcsMapper.BuildNewEventIcs(uid, summary, location, description, startUtc, endUtc, isAllDay);
-        var calendarUri = new Uri(new Uri(account.BaseUrl), calendar.CalDavHref);
+        var calendarUri = CalDavUris.CalendarUri(account, calendar);
         var etag = await calDavClient.PutEventAsync(calendarUri, uid, ics, credentials, ifMatchEtag: null, ct);
 
         var cached = new CachedEvent
@@ -50,15 +50,10 @@ public class CalendarWriteService(ICalDavClient calDavClient, OurLiveDbContext d
         DateTimeOffset startUtc, DateTimeOffset? endUtc, bool isAllDay, CancellationToken ct = default)
     {
         var ics = IcsMapper.ApplyEventFields(existing.RawIcs, summary, location, description, startUtc, endUtc, isAllDay);
-        var calendarUri = new Uri(new Uri(account.BaseUrl), calendar.CalDavHref);
+        var calendarUri = CalDavUris.CalendarUri(account, calendar);
         var etag = await calDavClient.PutEventAsync(calendarUri, existing.UId, ics, credentials, existing.ETag, ct);
 
-        existing.Summary = summary;
-        existing.Location = location;
-        existing.Description = description;
-        existing.StartUtc = startUtc;
-        existing.EndUtc = endUtc;
-        existing.IsAllDay = isAllDay;
+        existing.ApplyContentFields(summary, location, description, startUtc, endUtc, isAllDay);
         existing.ETag = etag;
         existing.RawIcs = ics;
         existing.LastSyncedUtc = DateTimeOffset.UtcNow;
@@ -71,7 +66,7 @@ public class CalendarWriteService(ICalDavClient calDavClient, OurLiveDbContext d
     public async Task DeleteEventAsync(
         CalendarAccount account, Calendar calendar, CachedEvent existing, CalDavCredentials credentials, CancellationToken ct = default)
     {
-        var calendarUri = new Uri(new Uri(account.BaseUrl), calendar.CalDavHref);
+        var calendarUri = CalDavUris.CalendarUri(account, calendar);
         var eventUri = new Uri(calendarUri, $"{existing.UId}.ics");
         await calDavClient.DeleteEventAsync(eventUri, existing.ETag ?? "", credentials, ct);
 

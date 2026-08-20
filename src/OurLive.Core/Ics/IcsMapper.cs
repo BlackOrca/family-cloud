@@ -60,13 +60,9 @@ public static class IcsMapper
         var vEvent = new CalendarEvent
         {
             Uid = uid,
-            Summary = summary,
-            Location = location,
-            Description = description,
             DtStamp = new CalDateTime(DateTime.UtcNow, "UTC", true),
-            Start = ToCalDateTime(startUtc, isAllDay),
-            End = endUtc is null ? null : ToCalDateTime(endUtc.Value, isAllDay),
         };
+        ApplyContentFields(vEvent, summary, location, description, startUtc, endUtc, isAllDay);
         calendar.Events.Add(vEvent);
         return new CalendarSerializer().SerializeToString(calendar)
             ?? throw new InvalidOperationException("Failed to serialize the new event to ICS.");
@@ -86,15 +82,22 @@ public static class IcsMapper
         var vEvent = calendar.Events.FirstOrDefault()
             ?? throw new InvalidOperationException("Existing event ICS contains no VEVENT.");
 
+        ApplyContentFields(vEvent, summary, location, description, startUtc, endUtc, isAllDay);
+        vEvent.LastModified = new CalDateTime(DateTime.UtcNow, "UTC", true);
+
+        return new CalendarSerializer().SerializeToString(calendar)
+            ?? throw new InvalidOperationException("Failed to serialize the updated event to ICS.");
+    }
+
+    private static void ApplyContentFields(
+        CalendarEvent vEvent, string summary, string? location, string? description,
+        DateTimeOffset startUtc, DateTimeOffset? endUtc, bool isAllDay)
+    {
         vEvent.Summary = summary;
         vEvent.Location = location;
         vEvent.Description = description;
         vEvent.Start = ToCalDateTime(startUtc, isAllDay);
         vEvent.End = endUtc is null ? null : ToCalDateTime(endUtc.Value, isAllDay);
-        vEvent.LastModified = new CalDateTime(DateTime.UtcNow, "UTC", true);
-
-        return new CalendarSerializer().SerializeToString(calendar)
-            ?? throw new InvalidOperationException("Failed to serialize the updated event to ICS.");
     }
 
     private static CalDateTime ToCalDateTime(DateTimeOffset value, bool isAllDay) =>

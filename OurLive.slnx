@@ -10,5 +10,6 @@
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/OurLive.Core.Tests/OurLive.Core.Tests.csproj" />
+    <Project Path="tests/OurLive.Server.Tests/OurLive.Server.Tests.csproj" />
   </Folder>
 </Solution>

@@ -37,4 +37,17 @@ public class CachedEvent
     public required string RawIcs { get; set; }
 
     public DateTimeOffset LastSyncedUtc { get; set; }
+
+    /// <summary>Applies the user-editable content fields shared by the sync and write paths.</summary>
+    public void ApplyContentFields(
+        string summary, string? location, string? description,
+        DateTimeOffset startUtc, DateTimeOffset? endUtc, bool isAllDay)
+    {
+        Summary = summary;
+        Location = location;
+        Description = description;
+        StartUtc = startUtc;
+        EndUtc = endUtc;
+        IsAllDay = isAllDay;
+    }
 }
