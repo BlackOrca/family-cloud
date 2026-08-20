@@ -5,6 +5,7 @@ using FamilyCloud.Calendar.Domain;
 using FamilyCloud.Core.Data;
 using FamilyCloud.Core.Domain;
 using FamilyCloud.Family.Domain;
+using FamilyCloud.Lists.Domain;
 // Aliased: this file lives under FamilyCloud.Server, and every FamilyCloud.* project is itself a
 // child namespace of FamilyCloud — so the bare names "Calendar"/"Family" resolve to those sibling
 // project namespaces (FamilyCloud.Calendar/FamilyCloud.Family), not the classes the usings above
@@ -40,6 +41,12 @@ public class FamilyCloudDbContext(DbContextOptions<FamilyCloudDbContext> options
     public DbSet<AppSettings> AppSettings => Set<AppSettings>();
 
     public DbSet<SyncEvent> SyncEvents => Set<SyncEvent>();
+
+    public DbSet<ItemList> ItemLists => Set<ItemList>();
+
+    public DbSet<ListItem> ListItems => Set<ListItem>();
+
+    public DbSet<ListPermission> ListPermissions => Set<ListPermission>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -118,6 +125,42 @@ public class FamilyCloudDbContext(DbContextOptions<FamilyCloudDbContext> options
             e.HasOne(ev => ev.Calendar)
                 .WithMany(c => c.Events)
                 .HasForeignKey(ev => ev.CalendarId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        builder.Entity<ItemList>(e =>
+        {
+            e.Property(l => l.Name).HasMaxLength(200);
+
+            e.HasOne<FamilyEntity>()
+                .WithMany()
+                .HasForeignKey(l => l.FamilyId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        builder.Entity<ListItem>(e =>
+        {
+            e.Property(i => i.Text).HasMaxLength(500);
+            e.Property(i => i.Quantity).HasMaxLength(50);
+
+            e.HasOne(i => i.ItemList)
+                .WithMany(l => l.Items)
+                .HasForeignKey(i => i.ItemListId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        builder.Entity<ListPermission>(e =>
+        {
+            e.HasIndex(p => new { p.UserId, p.ItemListId }).IsUnique();
+
+            e.HasOne(p => p.ItemList)
+                .WithMany(l => l.Permissions)
+                .HasForeignKey(p => p.ItemListId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            e.HasOne<AppUser>()
+                .WithMany()
+                .HasForeignKey(p => p.UserId)
                 .OnDelete(DeleteBehavior.Cascade);
         });
     }

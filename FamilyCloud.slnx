@@ -6,6 +6,7 @@
     <Project Path="src/FamilyCloud.Contracts/FamilyCloud.Contracts.csproj" />
     <Project Path="src/FamilyCloud.Core/FamilyCloud.Core.csproj" />
     <Project Path="src/FamilyCloud.Family/FamilyCloud.Family.csproj" />
+    <Project Path="src/FamilyCloud.Lists/FamilyCloud.Lists.csproj" />
     <Project Path="src/FamilyCloud.Server/FamilyCloud.Server.csproj" />
     <Project Path="src/FamilyCloud.ServiceDefaults/FamilyCloud.ServiceDefaults.csproj" />
     <Project Path="src/FamilyCloud.UI/FamilyCloud.UI.csproj" />
@@ -14,6 +15,7 @@
     <Project Path="tests/FamilyCloud.Calendar.Tests/FamilyCloud.Calendar.Tests.csproj" />
     <Project Path="tests/FamilyCloud.Core.Tests/FamilyCloud.Core.Tests.csproj" />
     <Project Path="tests/FamilyCloud.Family.Tests/FamilyCloud.Family.Tests.csproj" />
+    <Project Path="tests/FamilyCloud.Lists.Tests/FamilyCloud.Lists.Tests.csproj" />
     <Project Path="tests/FamilyCloud.Server.Tests/FamilyCloud.Server.Tests.csproj" />
   </Folder>
 </Solution>

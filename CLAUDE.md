@@ -10,14 +10,15 @@ Organized as a modular monolith: one `FamilyCloud.<Feature>` project per fachlic
 - `src/FamilyCloud.Server` — ASP.NET Core host and composition root. Admin Blazor UI (`/admin/*`, `/account`) + owns the composed `FamilyCloudDbContext` (`Data/`) that every feature project's entities are configured on.
 - `src/FamilyCloud.Calendar` — the Calendar feature: CalDAV client/XML, ICS mapping, Radicale credential provisioning, sync services, `/api/calendars`+`/api/events` endpoints. Referenced only by Server.
 - `src/FamilyCloud.Family` — the Family/User-management feature: Family/FamilyMember domain, login (issues the JWT, including family/role claims), account self-service endpoints (`/api/account/*`), `/api/family/members`. Referenced only by Server.
-- `src/FamilyCloud.Core` — cross-feature infrastructure only: `AppUser` (Identity base every feature's permission rows reference by `Guid UserId`), generic sync primitives (`SyncEvent`/`SyncEventPublisher`, used by every feature's write paths), `ClaimsPrincipalExtensions`/`FamilyClaimTypes`.
+- `src/FamilyCloud.Lists` — the Todo/Shopping-list feature: one `ItemList` entity (a `Kind` flag distinguishes Todo vs Shopping rather than separate entity types, since both are structurally just a named list of checkable items), `ListItem`, `ListPermission`, `/api/lists` endpoints including per-list sharing. Referenced only by Server.
+- `src/FamilyCloud.Core` — cross-feature infrastructure only: `AppUser` (Identity base every feature's permission rows reference by `Guid UserId`), generic sync primitives (`SyncEvent`/`SyncEventPublisher`, used by every feature's write paths), `ClaimsPrincipalExtensions`/`FamilyClaimTypes`, and cross-feature contracts like `IFamilyMembershipChecker` (implemented in Family, consumed by other features that need to validate family membership without referencing Family's domain types directly).
 - `src/FamilyCloud.UI` — shared Razor component library (MudBlazor) used by App and Server.
 - `src/FamilyCloud.Contracts` — DTOs shared between App and Server across the API boundary, organized by feature folder.
 - `src/FamilyCloud.AppHost` / `src/FamilyCloud.ServiceDefaults` — .NET Aspire orchestration (including the PostgreSQL resource) for local dev and for generating `docker-compose.yaml`.
-- `tests/FamilyCloud.Calendar.Tests`, `tests/FamilyCloud.Family.Tests`, `tests/FamilyCloud.Core.Tests`, `tests/FamilyCloud.Server.Tests` — xUnit tests, mirroring the `src/` feature split.
+- `tests/FamilyCloud.Calendar.Tests`, `tests/FamilyCloud.Family.Tests`, `tests/FamilyCloud.Lists.Tests`, `tests/FamilyCloud.Core.Tests`, `tests/FamilyCloud.Server.Tests` — xUnit tests, mirroring the `src/` feature split.
 - `radicale/config` — FamilyCloud-authored Radicale config (INI), bind-mounted into the Radicale container. Not Radicale source code.
 
-New feature domains (Todos, Photos, Storage, ...) follow the same pattern: a new `FamilyCloud.<Feature>` project referenced only by Server, its own `Contracts/<Feature>/` DTO folder, its own resource-scoped `<Feature>Permission` table (family-scoped via a `FamilyId` on the owning resource), and an `Add<Feature>Feature()`/`Map<Feature>Endpoints()` pair wired up in `Program.cs`.
+New feature domains (Photos, Storage, ...) follow the same pattern: a new `FamilyCloud.<Feature>` project referenced only by Server, its own `Contracts/<Feature>/` DTO folder, its own resource-scoped `<Feature>Permission` table (family-scoped via a `FamilyId` on the owning resource), and an `Add<Feature>Feature()`/`Map<Feature>Endpoints()` pair wired up in `Program.cs`. If a feature needs to check something owned by another feature (e.g. family membership), add a narrow interface to `FamilyCloud.Core` and implement it in the owning feature — never reference one feature project from another directly.
 
 ## Tech stack
 
@@ -37,7 +38,7 @@ New feature domains (Todos, Photos, Storage, ...) follow the same pattern: a new
 
 ## Radicale integration
 
-Radicale is consumed only as an external, unmodified third-party Docker image (`tomsquest/docker-radicale`), run as its own container and talked to over CalDAV/HTTP (`src/FamilyCloud.Core/Security/RadicaleCredentialProvisioner.cs` and friends). No Radicale source is vendored in this repo — don't go looking for it, and don't add it.
+Radicale is consumed only as an external, unmodified third-party Docker image (`tomsquest/docker-radicale`), run as its own container and talked to over CalDAV/HTTP (`src/FamilyCloud.Calendar/Security/RadicaleCredentialProvisioner.cs` and friends). No Radicale source is vendored in this repo — don't go looking for it, and don't add it.
 
 ## License
 

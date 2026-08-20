@@ -3,6 +3,7 @@ using System;
 using FamilyCloud.Server.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace FamilyCloud.Server.Data.Migrations
 {
     [DbContext(typeof(FamilyCloudDbContext))]
-    partial class FamilyCloudDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260820180618_AddLists")]
+    partial class AddLists
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder

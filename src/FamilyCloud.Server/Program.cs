@@ -16,6 +16,8 @@ using FamilyCloud.Core.Sync;
 using FamilyCloud.Family;
 using FamilyCloud.Family.Api;
 using FamilyCloud.Family.Domain;
+using FamilyCloud.Lists;
+using FamilyCloud.Lists.Api;
 using FamilyCloud.Server.Api;
 using FamilyCloud.Server.Components;
 using FamilyCloud.Server.Components.Account;
@@ -119,6 +121,7 @@ var radicaleHtpasswdPath = builder.Configuration["Radicale:HtpasswdPath"]
 var radicaleBaseUrl = builder.Configuration["Radicale:BaseUrl"] ?? "http://radicale:5232/";
 builder.Services.AddCalendarFeature(radicaleHtpasswdPath);
 builder.Services.AddFamilyFeature();
+builder.Services.AddListsFeature();
 
 builder.Services.AddIdentityCore<AppUser>(options =>
     {
@@ -248,6 +251,7 @@ app.MapAuthEndpoints();
 app.MapAccountEndpoints();
 app.MapFamilyEndpoints();
 app.MapCalendarEndpoints();
+app.MapListsEndpoints();
 app.MapSettingsEndpoints();
 app.MapSyncEndpoints();
 
