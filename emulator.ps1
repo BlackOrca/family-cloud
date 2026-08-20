@@ -1,12 +1,12 @@
 <#
-    Starts the Android emulator (AVD "ourlive-test") in the background and waits until
+    Starts the Android emulator (AVD "familycloud-test") in the background and waits until
     Android has fully booted, so the emulator is immediately ready for `dotnet build -t:Run`
     or deploying the APK from build.ps1.
 #>
 
 [CmdletBinding()]
 param(
-    [string] $AvdName = "ourlive-test"
+    [string] $AvdName = "familycloud-test"
 )
 
 $ErrorActionPreference = "Stop"

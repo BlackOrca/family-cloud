@@ -1,6 +1,6 @@
-# OurLive Assets 1.0
+# FamilyCloud Assets 1.0
 
-Dieses Paket enthält die erste visuelle Basis für die .NET MAUI App "OurLive".
+Dieses Paket enthält die erste visuelle Basis für die .NET MAUI App "FamilyCloud".
 
 ## Struktur
 
@@ -8,7 +8,7 @@ Dieses Paket enthält die erste visuelle Basis für die .NET MAUI App "OurLive".
 - `Resources/Images/Backgrounds/` — 5 WebP Wallpapers, 1080×2340
 - `Resources/AppIcon/` — Logo und drei App-Icon Varianten als SVG
 - `Resources/Splash/` — Splash-Hintergrund als WebP
-- `Docs/ourlive-design-tokens.json` — Farben, Typografie und Radien
+- `Docs/familycloud-design-tokens.json` — Farben, Typografie und Radien
 
 ## MAUI
 
@@ -42,4 +42,4 @@ Damit lassen sie sich später direkt in XAML über `FileImageSource` oder als `I
 
 ## Designprinzip
 
-OurLive soll nicht ausschließlich nach "Familien-App" aussehen. Die Bildsprache steht für gemeinsames Leben und funktioniert damit auch für Paare, Freunde, WGs und andere Lebensgemeinschaften.
+FamilyCloud soll nicht ausschließlich nach "Familien-App" aussehen. Die Bildsprache steht für gemeinsames Leben und funktioniert damit auch für Paare, Freunde, WGs und andere Lebensgemeinschaften.

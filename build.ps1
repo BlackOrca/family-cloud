@@ -42,7 +42,7 @@ $version.patch = [int]$version.patch + 1
 $semVer = "$($version.major).$($version.minor).$($version.patch)"
 $androidVersionCode = [int]$version.major * 10000 + [int]$version.minor * 100 + [int]$version.patch
 
-Write-Host "=== OurLive build $semVer ===" -ForegroundColor Green
+Write-Host "=== FamilyCloud build $semVer ===" -ForegroundColor Green
 
 $artifactsDir = Join-Path $repoRoot "artifacts"
 New-Item -ItemType Directory -Force -Path $artifactsDir | Out-Null
@@ -50,7 +50,7 @@ New-Item -ItemType Directory -Force -Path $artifactsDir | Out-Null
 # --- 2. Android APK - always built ---
 $appOutDir = Join-Path $artifactsDir "app"
 Invoke-Checked "Building Android APK ($semVer)" {
-    dotnet publish (Join-Path $repoRoot "src/OurLive.App/OurLive.App.csproj") `
+    dotnet publish (Join-Path $repoRoot "src/FamilyCloud.App/FamilyCloud.App.csproj") `
         -f net10.0-android -c Release `
         -p:ApplicationDisplayVersion=$semVer `
         -p:ApplicationVersion=$androidVersionCode `
@@ -61,24 +61,24 @@ $signedApk = Get-ChildItem $appOutDir -Filter "*-Signed.apk" | Select-Object -Fi
 if (-not $signedApk) {
     throw "Expected a signed APK under $appOutDir but found none."
 }
-$finalApkPath = Join-Path $appOutDir "OurLive.App-$semVer.apk"
+$finalApkPath = Join-Path $appOutDir "FamilyCloud.App-$semVer.apk"
 Copy-Item $signedApk.FullName $finalApkPath -Force
 
 # --- 3. Server Docker image - always built ---
-Invoke-Checked "Building server container image (ourlive-server:$semVer)" {
-    dotnet publish (Join-Path $repoRoot "src/OurLive.Server/OurLive.Server.csproj") `
+Invoke-Checked "Building server container image (familycloud-server:$semVer)" {
+    dotnet publish (Join-Path $repoRoot "src/FamilyCloud.Server/FamilyCloud.Server.csproj") `
         -c Release --os linux --arch x64 -t:PublishContainer `
-        -p:ContainerRepository=ourlive-server `
+        -p:ContainerRepository=familycloud-server `
         -p:ContainerImageTag=$semVer
 }
-Invoke-Checked "Tagging ourlive-server:latest" { docker tag "ourlive-server:$semVer" "ourlive-server:latest" }
+Invoke-Checked "Tagging familycloud-server:latest" { docker tag "familycloud-server:$semVer" "familycloud-server:latest" }
 
 # --- 4. docker-compose.yaml - always regenerated, committed at repo root ---
 $composeOutDir = Join-Path $artifactsDir "compose"
 Remove-Item $composeOutDir -Recurse -Force -ErrorAction SilentlyContinue
 Invoke-Checked "Generating docker-compose.yaml" {
     dotnet dnx aspire.cli@13.5.0 -- publish `
-        --apphost (Join-Path $repoRoot "src/OurLive.AppHost/OurLive.AppHost.csproj") `
+        --apphost (Join-Path $repoRoot "src/FamilyCloud.AppHost/FamilyCloud.AppHost.csproj") `
         -o $composeOutDir --non-interactive --nologo
 }
 Copy-Item (Join-Path $composeOutDir "docker-compose.yaml") (Join-Path $repoRoot "docker-compose.yaml") -Force
@@ -86,12 +86,12 @@ Copy-Item (Join-Path $composeOutDir "docker-compose.yaml") (Join-Path $repoRoot 
 Write-Host ""
 Write-Host "=== Build $semVer complete ===" -ForegroundColor Green
 Write-Host "APK:          $finalApkPath"
-Write-Host "Docker image: ourlive-server:$semVer (also tagged :latest)"
+Write-Host "Docker image: familycloud-server:$semVer (also tagged :latest)"
 Write-Host "Compose file: $(Join-Path $repoRoot 'docker-compose.yaml')"
 Write-Host ""
 Write-Host "Before 'docker compose up' on a deploy target, create a .env next to docker-compose.yaml" -ForegroundColor Yellow
 Write-Host "(see .env.example) with at least:" -ForegroundColor Yellow
-Write-Host "  SERVER_IMAGE=ourlive-server:$semVer"
+Write-Host "  SERVER_IMAGE=familycloud-server:$semVer"
 Write-Host "  SERVER_PORT=8080"
 Write-Host "  JWT_SIGNING_KEY=<random 32+ character string>"
 Write-Host "  SEED_ADMIN_USERNAME=<username>"

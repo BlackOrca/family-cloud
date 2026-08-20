@@ -1,5 +1,5 @@
 services:
-  ourlive-dashboard:
+  familycloud-dashboard:
     image: "mcr.microsoft.com/dotnet/nightly/aspire-dashboard:13.5"
     ports:
       - "18888"
@@ -52,13 +52,13 @@ services:
       OTEL_DOTNET_EXPERIMENTAL_OTLP_RETRY: "in_memory"
       ASPNETCORE_FORWARDEDHEADERS_ENABLED: "true"
       HTTP_PORTS: "${SERVER_PORT}"
-      ConnectionStrings__DefaultConnection: "Data Source=/data/ourlive.db"
+      ConnectionStrings__DefaultConnection: "Data Source=/data/familycloud.db"
       Jwt__SigningKey: "${JWT_SIGNING_KEY}"
       SeedAdmin__UserName: "${SEED_ADMIN_USERNAME}"
       SeedAdmin__Password: "${SEED_ADMIN_PASSWORD}"
       Radicale__BaseUrl: "http://radicale:5232/"
       Radicale__HtpasswdPath: "/radicale-auth/users"
-      OTEL_EXPORTER_OTLP_ENDPOINT: "http://ourlive-dashboard:18889"
+      OTEL_EXPORTER_OTLP_ENDPOINT: "http://familycloud-dashboard:18889"
       OTEL_EXPORTER_OTLP_PROTOCOL: "grpc"
       OTEL_SERVICE_NAME: "server"
     ports:

@@ -1,5 +1,5 @@
 {
   "appHost": {
-    "path": "src/OurLive.AppHost/OurLive.AppHost.csproj"
+    "path": "src/FamilyCloud.AppHost/FamilyCloud.AppHost.csproj"
   }
 }
