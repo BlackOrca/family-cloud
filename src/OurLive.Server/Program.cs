@@ -15,6 +15,7 @@ using OurLive.Core.Sync;
 using OurLive.Server.Api;
 using OurLive.Server.Components;
 using OurLive.Server.Components.Account;
+using OurLive.Server.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -36,6 +37,7 @@ builder.Services.AddHttpClient<ICalDavClient, CalDavClient>()
     .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler { PooledConnectionLifetime = TimeSpan.Zero });
 builder.Services.AddScoped<CalendarSyncService>();
 builder.Services.AddScoped<CalendarWriteService>();
+builder.Services.AddSingleton<AppTitleNotifier>();
 
 var jwtSigningKey = builder.Configuration["Jwt:SigningKey"]
     ?? throw new InvalidOperationException(
@@ -194,6 +196,7 @@ app.MapAdditionalIdentityEndpoints();
 
 app.MapAuthEndpoints();
 app.MapCalendarsEndpoints();
+app.MapSettingsEndpoints();
 
 app.Run();
 

@@ -1,20 +1,22 @@
 @page "/setup"
 
-<MudContainer MaxWidth="MaxWidth.Small" Class="mt-8">
-    <MudCard Class="pa-4 mb-4" Elevation="4">
-        <MudCardContent>
-            <MudText Typo="Typo.h5" Class="mb-4">Server-Adresse</MudText>
-            <MudForm @ref="_addressForm" Model="this">
-                <MudTextField T="string" @bind-Value="_serverAddress" Label="Server-Adresse" Required="true"
-                              RequiredError="Server-Adresse wird benötigt" Validation="@(new Func<string, string?>(ValidateAddress))"
-                              Placeholder="http://192.168.1.10:5253/" Disabled="_isBusy" />
-            </MudForm>
-        </MudCardContent>
-    </MudCard>
+<div class="auth-background pt-8">
+    <MudContainer MaxWidth="MaxWidth.Small">
+        <MudCard Class="pa-4 mb-4" Elevation="4">
+            <MudCardContent>
+                <MudText Typo="Typo.h5" Class="mb-4">Server-Adresse</MudText>
+                <MudForm @ref="_addressForm" Model="this">
+                    <MudTextField T="string" @bind-Value="_serverAddress" Label="Server-Adresse" Required="true"
+                                  RequiredError="Server-Adresse wird benötigt" Validation="@(new Func<string, string?>(ValidateAddress))"
+                                  Placeholder="http://192.168.1.10:5253/" Disabled="_isBusy" />
+                </MudForm>
+            </MudCardContent>
+        </MudCard>
 
-    <LoginFormCard Title="Anmelden" UserName="@_userName" Password="@_password"
-                   IsBusy="_isBusy" ErrorMessage="@_errorMessage" OnSubmit="HandleSubmitAsync" />
-</MudContainer>
+        <LoginFormCard Title="Anmelden" UserName="@_userName" Password="@_password"
+                       IsBusy="_isBusy" ErrorMessage="@_errorMessage" OnSubmit="HandleSubmitAsync" />
+    </MudContainer>
+</div>
 
 @code {
     [Inject] private ApiClient Api { get; set; } = default!;

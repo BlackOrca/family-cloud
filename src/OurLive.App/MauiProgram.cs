@@ -20,6 +20,7 @@ public static class MauiProgram
 		builder.Services.AddMudServices();
 
 		builder.Services.AddSingleton<AppAuthState>();
+		builder.Services.AddSingleton<AppTitleState>();
 		builder.Services.AddSingleton<AuthTokenStore>();
 		builder.Services.AddSingleton<ServerAddressStore>();
 		builder.Services.AddTransient<AuthTokenHandler>();

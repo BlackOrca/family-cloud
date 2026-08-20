@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Json;
 using OurLive.Contracts.Auth;
 using OurLive.Contracts.Calendars;
+using OurLive.Contracts.Settings;
 
 namespace OurLive.App.Services;
 
@@ -10,6 +11,9 @@ internal sealed class ApiClient(HttpClient http)
     /// <summary>Redirects this client's already-created <see cref="HttpClient"/> immediately, so a server
     /// address just entered on the setup screen takes effect without waiting for the app to restart.</summary>
     public void SetBaseAddress(Uri baseAddress) => http.BaseAddress = baseAddress;
+
+    public async Task<AppSettingsDto?> GetSettingsAsync(CancellationToken ct = default) =>
+        await http.GetFromJsonAsync<AppSettingsDto>("api/settings", ct);
 
     public async Task<LoginResponse?> LoginAsync(string userName, string password, CancellationToken ct = default)
     {

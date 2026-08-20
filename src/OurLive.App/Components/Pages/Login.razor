@@ -1,17 +1,21 @@
 @page "/login"
+@implements IDisposable
 
-<MudContainer MaxWidth="MaxWidth.Small" Class="mt-8">
-    <LoginFormCard Title="OurLive" @bind-UserName="_userName" @bind-Password="_password"
-                   IsBusy="_isBusy" ErrorMessage="@_errorMessage" OnSubmit="HandleLoginAsync" />
-    <div class="d-flex justify-center mt-2">
-        <MudButton Variant="Variant.Text" Size="Size.Small" OnClick="@(() => Nav.NavigateTo("/setup"))">Server ändern</MudButton>
-    </div>
-</MudContainer>
+<div class="auth-background pt-8">
+    <MudContainer MaxWidth="MaxWidth.Small">
+        <LoginFormCard Title="@TitleState.Title" @bind-UserName="_userName" @bind-Password="_password"
+                       IsBusy="_isBusy" ErrorMessage="@_errorMessage" OnSubmit="HandleLoginAsync" />
+        <div class="d-flex justify-center mt-2">
+            <MudButton Variant="Variant.Text" Size="Size.Small" OnClick="@(() => Nav.NavigateTo("/setup"))">Server ändern</MudButton>
+        </div>
+    </MudContainer>
+</div>
 
 @code {
     [Inject] private ApiClient Api { get; set; } = default!;
     [Inject] private AuthTokenStore TokenStore { get; set; } = default!;
     [Inject] private AppAuthState AuthState { get; set; } = default!;
+    [Inject] private AppTitleState TitleState { get; set; } = default!;
     [Inject] private ServerAddressStore AddressStore { get; set; } = default!;
     [Inject] private NavigationManager Nav { get; set; } = default!;
 
@@ -26,7 +30,13 @@
         {
             Nav.NavigateTo("/setup", replace: true);
         }
+
+        TitleState.Changed += OnTitleChanged;
     }
+
+    private void OnTitleChanged() => InvokeAsync(StateHasChanged);
+
+    public void Dispose() => TitleState.Changed -= OnTitleChanged;
 
     private async Task HandleLoginAsync((string UserName, string Password) credentials)
     {

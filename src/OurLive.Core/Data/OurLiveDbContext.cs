@@ -16,6 +16,8 @@ public class OurLiveDbContext(DbContextOptions<OurLiveDbContext> options)
 
     public DbSet<CachedEvent> CachedEvents => Set<CachedEvent>();
 
+    public DbSet<AppSettings> AppSettings => Set<AppSettings>();
+
     protected override void OnModelCreating(ModelBuilder builder)
     {
         base.OnModelCreating(builder);
@@ -23,6 +25,11 @@ public class OurLiveDbContext(DbContextOptions<OurLiveDbContext> options)
         builder.Entity<CalendarAccount>(e =>
         {
             e.Property(a => a.DisplayName).HasMaxLength(200);
+        });
+
+        builder.Entity<AppSettings>(e =>
+        {
+            e.Property(s => s.Title).HasMaxLength(200);
         });
 
         builder.Entity<Calendar>(e =>

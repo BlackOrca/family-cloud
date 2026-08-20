@@ -1,0 +1,28 @@
+{
+  "OurLive": {
+    "colors": {
+      "primary": "#19B5C8",
+      "secondary": "#7650D9",
+      "accent": "#3A7DFF",
+      "navy": "#122C55",
+      "background": "#F7F8FC",
+      "surface": "#FFFFFF",
+      "border": "#E6ECF3",
+      "muted": "#64748B"
+    },
+    "typography": {
+      "family": "Inter",
+      "title1": "24/32 SemiBold",
+      "title2": "20/28 SemiBold",
+      "title3": "16/24 Medium",
+      "body": "14/20 Regular",
+      "caption": "12/16 Regular"
+    },
+    "radii": {
+      "small": 10,
+      "medium": 16,
+      "large": 24,
+      "pill": 999
+    }
+  }
+}
