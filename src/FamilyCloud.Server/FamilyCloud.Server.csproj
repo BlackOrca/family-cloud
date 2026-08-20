@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UserSecretsId>aspnet-FamilyCloud_Server-b706fdb9-f33a-40f6-96bb-57df4a5c7247</UserSecretsId>
+    <BlazorDisableThrowNavigationException>true</BlazorDisableThrowNavigationException>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.11" />
+    <PackageReference Include="Microsoft.AspNetCore.Diagnostics.EntityFrameworkCore" Version="10.0.11" />
+    <!-- Needed at design time so `dotnet ef` can use this project as the startup project for migrations. -->
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.11" PrivateAssets="all" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\FamilyCloud.Core\FamilyCloud.Core.csproj" />
+    <ProjectReference Include="..\FamilyCloud.UI\FamilyCloud.UI.csproj" />
+    <ProjectReference Include="..\FamilyCloud.ServiceDefaults\FamilyCloud.ServiceDefaults.csproj" />
+    <ProjectReference Include="..\FamilyCloud.Contracts\FamilyCloud.Contracts.csproj" />
+  </ItemGroup>
+
+</Project>
