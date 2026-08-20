@@ -1,0 +1,100 @@
+@page "/setup"
+
+<MudContainer MaxWidth="MaxWidth.Small" Class="mt-8">
+    <MudCard Class="pa-4 mb-4" Elevation="4">
+        <MudCardContent>
+            <MudText Typo="Typo.h5" Class="mb-4">Server-Adresse</MudText>
+            <MudForm @ref="_addressForm" Model="this">
+                <MudTextField T="string" @bind-Value="_serverAddress" Label="Server-Adresse" Required="true"
+                              RequiredError="Server-Adresse wird benötigt" Validation="@(new Func<string, string?>(ValidateAddress))"
+                              Placeholder="http://192.168.1.10:5253/" Disabled="_isBusy" />
+            </MudForm>
+        </MudCardContent>
+    </MudCard>
+
+    <LoginFormCard Title="Anmelden" UserName="@_userName" Password="@_password"
+                   IsBusy="_isBusy" ErrorMessage="@_errorMessage" OnSubmit="HandleSubmitAsync" />
+</MudContainer>
+
+@code {
+    [Inject] private ApiClient Api { get; set; } = default!;
+    [Inject] private AuthTokenStore TokenStore { get; set; } = default!;
+    [Inject] private AppAuthState AuthState { get; set; } = default!;
+    [Inject] private ServerAddressStore AddressStore { get; set; } = default!;
+    [Inject] private NavigationManager Nav { get; set; } = default!;
+
+    private MudForm? _addressForm;
+    private string _serverAddress = ServerConfig.DefaultBaseAddress;
+    private string _userName = "";
+    private string _password = "";
+    private bool _isBusy;
+    private string? _errorMessage;
+
+    protected override void OnInitialized()
+    {
+        if (AddressStore.Load() is { } existing)
+        {
+            _serverAddress = existing.ToString();
+        }
+    }
+
+    private static string? ValidateAddress(string value) =>
+        Uri.TryCreate(value, UriKind.Absolute, out var uri) && (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps)
+            ? null
+            : "Bitte eine gültige Server-Adresse eingeben, z. B. http://192.168.1.10:5253/";
+
+    private async Task HandleSubmitAsync((string UserName, string Password) credentials)
+    {
+        if (_addressForm is null)
+        {
+            return;
+        }
+
+        await _addressForm.ValidateAsync();
+        if (!_addressForm.IsValid)
+        {
+            return;
+        }
+
+        _isBusy = true;
+        _errorMessage = null;
+        StateHasChanged();
+
+        try
+        {
+            var address = NormalizeAddress(_serverAddress);
+            Api.SetBaseAddress(address);
+            AddressStore.Save(address);
+
+            var result = await Api.LoginAsync(credentials.UserName, credentials.Password);
+            if (result is null)
+            {
+                _errorMessage = "Benutzername oder Passwort ist falsch.";
+                return;
+            }
+
+            await TokenStore.SaveAsync(result.Token, result.ExpiresUtc, result.DisplayName);
+            AuthState.SetLoggedIn(result.Token, result.DisplayName);
+            Nav.NavigateTo("/", replace: true);
+        }
+        catch (Exception)
+        {
+            _errorMessage = "Server nicht erreichbar. Bitte später erneut versuchen.";
+        }
+        finally
+        {
+            _isBusy = false;
+            StateHasChanged();
+        }
+    }
+
+    private static Uri NormalizeAddress(string value)
+    {
+        var trimmed = value.Trim();
+        if (!trimmed.EndsWith('/'))
+        {
+            trimmed += "/";
+        }
+        return new Uri(trimmed, UriKind.Absolute);
+    }
+}

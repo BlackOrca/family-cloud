@@ -17,7 +17,14 @@ else if (AuthState.IsAuthenticated)
     </MudAppBar>
 
     <MudContainer MaxWidth="MaxWidth.Small" Class="mt-4">
-        @if (_calendars.Count == 0)
+        @if (_loadError is not null)
+        {
+            <MudAlert Severity="Severity.Error" Class="mb-2">
+                @_loadError
+                <MudButton Variant="Variant.Text" Color="Color.Inherit" Class="ml-2" OnClick="RetryLoadAsync">Erneut versuchen</MudButton>
+            </MudAlert>
+        }
+        else if (_calendars.Count == 0)
         {
             <MudAlert Severity="Severity.Info">Für dich sind noch keine Kalender freigegeben.</MudAlert>
         }
@@ -49,18 +56,29 @@ else if (AuthState.IsAuthenticated)
     [Inject] private ApiClient Api { get; set; } = default!;
     [Inject] private AuthTokenStore TokenStore { get; set; } = default!;
     [Inject] private AppAuthState AuthState { get; set; } = default!;
+    [Inject] private ServerAddressStore AddressStore { get; set; } = default!;
     [Inject] private NavigationManager Nav { get; set; } = default!;
     [Inject] private IDialogService DialogService { get; set; } = default!;
     [Inject] private ISnackbar Snackbar { get; set; } = default!;
+
+    private const string ServerUnreachableMessage = "Server nicht erreichbar. Bitte später erneut versuchen.";
 
     private bool _isLoading = true;
     private List<CalendarDto> _calendars = [];
     private List<EventDto> _events = [];
     private HashSet<Guid> _selectedCalendarIds = [];
+    private string? _loadError;
 
     protected override async Task OnInitializedAsync()
     {
         AuthState.Changed += OnAuthChanged;
+
+        if (AddressStore.Load() is null)
+        {
+            _isLoading = false;
+            Nav.NavigateTo("/setup", replace: true);
+            return;
+        }
 
         if (!AuthState.IsAuthenticated)
         {
@@ -84,15 +102,38 @@ else if (AuthState.IsAuthenticated)
 
     private async Task LoadCalendarsAndEventsAsync()
     {
-        _calendars = await Api.GetCalendarsAsync();
-        _selectedCalendarIds = _calendars.Select(c => c.Id).ToHashSet();
-        await ReloadEventsAsync();
+        try
+        {
+            _loadError = null;
+            _calendars = await Api.GetCalendarsAsync();
+            _selectedCalendarIds = _calendars.Select(c => c.Id).ToHashSet();
+            await ReloadEventsAsync();
+        }
+        catch (Exception)
+        {
+            _loadError = ServerUnreachableMessage;
+        }
+    }
+
+    private async Task RetryLoadAsync()
+    {
+        _isLoading = true;
+        StateHasChanged();
+        await LoadCalendarsAndEventsAsync();
+        _isLoading = false;
     }
 
     private async Task OnSelectionChangedAsync(HashSet<Guid> selectedIds)
     {
         _selectedCalendarIds = selectedIds;
-        await ReloadEventsAsync();
+        try
+        {
+            await ReloadEventsAsync();
+        }
+        catch (Exception)
+        {
+            Snackbar.Add(ServerUnreachableMessage, Severity.Error);
+        }
         StateHasChanged();
     }
 
@@ -117,8 +158,15 @@ else if (AuthState.IsAuthenticated)
             return;
         }
 
-        var writeResult = await Api.CreateEventAsync(calendarId, result.Request!);
-        await HandleWriteResultAsync(writeResult, "erstellt");
+        try
+        {
+            var writeResult = await Api.CreateEventAsync(calendarId, result.Request!);
+            await HandleWriteResultAsync(writeResult, "erstellt");
+        }
+        catch (Exception)
+        {
+            Snackbar.Add(ServerUnreachableMessage, Severity.Error);
+        }
     }
 
     private async Task OpenEditDialogAsync(EventDto evt)
@@ -131,11 +179,18 @@ else if (AuthState.IsAuthenticated)
             return;
         }
 
-        var writeResult = result.Action == EventEditDialogAction.Delete
-            ? await Api.DeleteEventAsync(evt.Id)
-            : await Api.UpdateEventAsync(evt.Id, result.Request!);
+        try
+        {
+            var writeResult = result.Action == EventEditDialogAction.Delete
+                ? await Api.DeleteEventAsync(evt.Id)
+                : await Api.UpdateEventAsync(evt.Id, result.Request!);
 
-        await HandleWriteResultAsync(writeResult, result.Action == EventEditDialogAction.Delete ? "gelöscht" : "gespeichert");
+            await HandleWriteResultAsync(writeResult, result.Action == EventEditDialogAction.Delete ? "gelöscht" : "gespeichert");
+        }
+        catch (Exception)
+        {
+            Snackbar.Add(ServerUnreachableMessage, Severity.Error);
+        }
     }
 
     private async Task HandleWriteResultAsync(EventWriteResult result, string successVerb)

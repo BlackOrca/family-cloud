@@ -7,6 +7,10 @@ namespace OurLive.App.Services;
 
 internal sealed class ApiClient(HttpClient http)
 {
+    /// <summary>Redirects this client's already-created <see cref="HttpClient"/> immediately, so a server
+    /// address just entered on the setup screen takes effect without waiting for the app to restart.</summary>
+    public void SetBaseAddress(Uri baseAddress) => http.BaseAddress = baseAddress;
+
     public async Task<LoginResponse?> LoginAsync(string userName, string password, CancellationToken ct = default)
     {
         var response = await http.PostAsJsonAsync("api/auth/login", new LoginRequest(userName, password), ct);

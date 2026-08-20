@@ -41,7 +41,27 @@ else
     private IEnumerable<IGrouping<DateOnly, EventDto>> GroupedByDay =>
         Events
             .OrderBy(e => e.StartUtc)
-            .GroupBy(e => DateOnly.FromDateTime(e.StartUtc.LocalDateTime));
+            .SelectMany(e => DaysSpanned(e).Select(day => (Day: day, Event: e)))
+            .GroupBy(x => x.Day, x => x.Event);
+
+    /// <summary>Every local day an event should appear on. Timed events and single-day all-day events
+    /// span just their start day; a multi-day all-day event's EndUtc is the RFC 5545 exclusive end
+    /// (day after the last day), so it's spanned up to but not including that day.</summary>
+    private static IEnumerable<DateOnly> DaysSpanned(EventDto evt)
+    {
+        var startDay = DateOnly.FromDateTime(evt.StartUtc.LocalDateTime);
+        if (!evt.IsAllDay || evt.EndUtc is not { } endUtc)
+        {
+            yield return startDay;
+            yield break;
+        }
+
+        var lastDay = DateOnly.FromDateTime(endUtc.LocalDateTime).AddDays(-1);
+        for (var day = startDay; day <= lastDay; day = day.AddDays(1))
+        {
+            yield return day;
+        }
+    }
 
     private string TimeRangeFor(EventDto evt)
     {

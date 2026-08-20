@@ -3,18 +3,30 @@
 <MudContainer MaxWidth="MaxWidth.Small" Class="mt-8">
     <LoginFormCard Title="OurLive" UserName="@_userName" Password="@_password"
                    IsBusy="_isBusy" ErrorMessage="@_errorMessage" OnSubmit="HandleLoginAsync" />
+    <div class="d-flex justify-center mt-2">
+        <MudButton Variant="Variant.Text" Size="Size.Small" OnClick="@(() => Nav.NavigateTo("/setup"))">Server ändern</MudButton>
+    </div>
 </MudContainer>
 
 @code {
     [Inject] private ApiClient Api { get; set; } = default!;
     [Inject] private AuthTokenStore TokenStore { get; set; } = default!;
     [Inject] private AppAuthState AuthState { get; set; } = default!;
+    [Inject] private ServerAddressStore AddressStore { get; set; } = default!;
     [Inject] private NavigationManager Nav { get; set; } = default!;
 
     private string _userName = "";
     private string _password = "";
     private bool _isBusy;
     private string? _errorMessage;
+
+    protected override void OnInitialized()
+    {
+        if (AddressStore.Load() is null)
+        {
+            Nav.NavigateTo("/setup", replace: true);
+        }
+    }
 
     private async Task HandleLoginAsync((string UserName, string Password) credentials)
     {

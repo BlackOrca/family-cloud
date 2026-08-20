@@ -21,8 +21,13 @@ public static class MauiProgram
 
 		builder.Services.AddSingleton<AppAuthState>();
 		builder.Services.AddSingleton<AuthTokenStore>();
+		builder.Services.AddSingleton<ServerAddressStore>();
 		builder.Services.AddTransient<AuthTokenHandler>();
-		builder.Services.AddHttpClient<ApiClient>(client => client.BaseAddress = new Uri(ServerConfig.BaseAddress))
+		builder.Services.AddHttpClient<ApiClient>((sp, client) =>
+			{
+				var address = sp.GetRequiredService<ServerAddressStore>().Load();
+				client.BaseAddress = address ?? new Uri(ServerConfig.DefaultBaseAddress);
+			})
 			.AddHttpMessageHandler<AuthTokenHandler>();
 
 #if DEBUG

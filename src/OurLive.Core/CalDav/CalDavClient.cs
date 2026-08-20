@@ -51,7 +51,7 @@ public class CalDavClient(HttpClient httpClient) : ICalDavClient
             request.Headers.TryAddWithoutValidation("If-None-Match", "*");
         }
 
-        using var response = await httpClient.SendAsync(request, ct);
+        using var response = await SendAsync(request, ct);
         if (!response.IsSuccessStatusCode)
         {
             var body = await response.Content.ReadAsStringAsync(ct);
@@ -68,7 +68,7 @@ public class CalDavClient(HttpClient httpClient) : ICalDavClient
         SetAuth(request, credentials);
         request.Headers.TryAddWithoutValidation("If-Match", etag);
 
-        using var response = await httpClient.SendAsync(request, ct);
+        using var response = await SendAsync(request, ct);
         if (!response.IsSuccessStatusCode && response.StatusCode != HttpStatusCode.NotFound)
         {
             var body = await response.Content.ReadAsStringAsync(ct);
@@ -85,7 +85,7 @@ public class CalDavClient(HttpClient httpClient) : ICalDavClient
         SetAuth(request, credentials);
         request.Headers.TryAddWithoutValidation("Depth", depth.ToString());
 
-        using var response = await httpClient.SendAsync(request, ct);
+        using var response = await SendAsync(request, ct);
         var responseBody = await response.Content.ReadAsStringAsync(ct);
         if (!response.IsSuccessStatusCode)
         {
@@ -93,6 +93,28 @@ public class CalDavClient(HttpClient httpClient) : ICalDavClient
         }
 
         return responseBody;
+    }
+
+    /// <summary>
+    /// Wraps <see cref="HttpClient.SendAsync(HttpRequestMessage, CancellationToken)"/> so that connectivity
+    /// failures (unreachable host, DNS failure, timeout) surface as <see cref="CalDavException"/> like every
+    /// other failure mode here, instead of an unhandled <see cref="HttpRequestException"/>/<see cref="TaskCanceledException"/>
+    /// that callers don't expect. A cancellation actually requested via <paramref name="ct"/> is rethrown as-is.
+    /// </summary>
+    private async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
+    {
+        try
+        {
+            return await httpClient.SendAsync(request, ct);
+        }
+        catch (HttpRequestException ex)
+        {
+            throw new CalDavException("CalDAV-Server ist nicht erreichbar.", null, ex);
+        }
+        catch (TaskCanceledException ex) when (!ct.IsCancellationRequested)
+        {
+            throw new CalDavException("CalDAV-Server hat nicht rechtzeitig geantwortet.", null, ex);
+        }
     }
 
     private static void SetAuth(HttpRequestMessage request, CalDavCredentials credentials)
