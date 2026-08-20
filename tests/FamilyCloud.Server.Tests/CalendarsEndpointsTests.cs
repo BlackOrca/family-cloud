@@ -5,8 +5,11 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using FamilyCloud.Contracts.Auth;
 using FamilyCloud.Contracts.Calendars;
-using FamilyCloud.Core.Data;
-using FamilyCloud.Core.Domain;
+using FamilyCloud.Calendar.Domain;
+using FamilyCloud.Server.Data;
+// Aliased: FamilyCloud.Calendar.Domain.Calendar's bare name "Calendar" collides with the sibling
+// FamilyCloud.Calendar project namespace once nested under FamilyCloud (see FamilyCloudDbContext.cs).
+using CalendarEntity = FamilyCloud.Calendar.Domain.Calendar;
 
 namespace FamilyCloud.Server.Tests;
 
@@ -43,20 +46,23 @@ public class CalendarsEndpointsTests(FamilyCloudWebApplicationFactory factory) :
             var db = scope.ServiceProvider.GetRequiredService<FamilyCloudDbContext>();
             var user = await db.Users.SingleAsync(u => u.UserName == factory.SeedAdminUserName);
 
-            // The managed Radicale account the server provisions at seed time (see Program.cs) — reused
-            // here rather than creating a second unrelated account, since only its id actually matters.
+            // The managed Radicale account and the seeded family (see Program.cs) — reused here
+            // rather than creating second unrelated rows, since only their ids actually matter.
             var account = await db.CalendarAccounts.FirstAsync();
+            var familyId = (await db.Families.FirstAsync()).Id;
 
-            var visibleCalendar = new Calendar
+            var visibleCalendar = new CalendarEntity
             {
                 Id = Guid.NewGuid(),
+                FamilyId = familyId,
                 CalendarAccountId = account.Id,
                 CalDavHref = "/testuser/visible/",
                 DisplayName = "Sichtbar",
             };
-            var hiddenCalendar = new Calendar
+            var hiddenCalendar = new CalendarEntity
             {
                 Id = Guid.NewGuid(),
+                FamilyId = familyId,
                 CalendarAccountId = account.Id,
                 CalDavHref = "/testuser/hidden/",
                 DisplayName = "Ohne Berechtigung",
@@ -96,9 +102,11 @@ public class CalendarsEndpointsTests(FamilyCloudWebApplicationFactory factory) :
         {
             var db = scope.ServiceProvider.GetRequiredService<FamilyCloudDbContext>();
             var account = await db.CalendarAccounts.FirstAsync();
-            var calendar = new Calendar
+            var familyId = (await db.Families.FirstAsync()).Id;
+            var calendar = new CalendarEntity
             {
                 Id = Guid.NewGuid(),
+                FamilyId = familyId,
                 CalendarAccountId = account.Id,
                 CalDavHref = "/testuser/no-permission/",
                 DisplayName = "Ohne Berechtigung",

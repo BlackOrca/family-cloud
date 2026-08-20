@@ -1,0 +1,208 @@
+@page "/account"
+@attribute [Authorize]
+@using System.ComponentModel.DataAnnotations
+@using System.Security.Claims
+@using Microsoft.AspNetCore.Identity
+@using Microsoft.EntityFrameworkCore
+@using FamilyCloud.Calendar.Domain
+@using FamilyCloud.Calendar.Security
+@using FamilyCloud.Core.Data
+@using FamilyCloud.Server.Data
+@inject UserManager<AppUser> UserManager
+@inject SignInManager<AppUser> SignInManager
+@inject AuthenticationStateProvider AuthState
+@inject FamilyCloudDbContext Db
+@inject ICalDavPasswordProtector PasswordProtector
+@inject IRadicaleCredentialProvisioner RadicaleProvisioner
+@inject IConfiguration Configuration
+@inject ISnackbar Snackbar
+@inject NavigationManager NavigationManager
+
+<PageTitle>Mein Account</PageTitle>
+
+<MudText Typo="Typo.h4" Class="mb-4">Mein Account</MudText>
+
+<MudPaper Class="pa-4 mb-4" Elevation="2" Style="max-width: 480px;">
+    <MudText Typo="Typo.h6" Class="mb-2">Profil</MudText>
+    <MudForm Model="@profileModel" @ref="profileForm">
+        <MudTextField T="string" Label="Anzeigename" @bind-Value="profileModel.DisplayName"
+                      Required="true" RequiredError="Pflichtfeld" />
+        <MudTextField T="string" Label="E-Mail" @bind-Value="profileModel.Email" InputType="InputType.Email" Class="mt-3" />
+    </MudForm>
+
+    @if (!string.IsNullOrEmpty(profileErrorMessage))
+    {
+        <MudAlert Severity="Severity.Error" Class="mt-3">@profileErrorMessage</MudAlert>
+    }
+
+    <MudButton Color="Color.Primary" Variant="Variant.Filled" Class="mt-4" OnClick="SaveProfileAsync">
+        Profil speichern
+    </MudButton>
+</MudPaper>
+
+<MudPaper Class="pa-4" Elevation="2" Style="max-width: 480px;">
+    <MudText Typo="Typo.h6" Class="mb-2">Passwort ändern</MudText>
+    <MudForm Model="@passwordModel" @ref="passwordForm">
+        <MudTextField T="string" Label="Aktuelles Passwort" @bind-Value="passwordModel.CurrentPassword" InputType="InputType.Password"
+                      Required="true" RequiredError="Pflichtfeld" />
+        <MudTextField T="string" Label="Neues Passwort" @bind-Value="passwordModel.NewPassword" InputType="InputType.Password"
+                      Required="true" RequiredError="Pflichtfeld" Class="mt-3" />
+        <MudTextField T="string" Label="Neues Passwort bestätigen" @bind-Value="passwordModel.ConfirmPassword" InputType="InputType.Password"
+                      Required="true" RequiredError="Pflichtfeld" Class="mt-3"
+                      Validation="@(new Func<string, string?>(ConfirmPasswordMatches))" />
+    </MudForm>
+
+    @if (!string.IsNullOrEmpty(passwordErrorMessage))
+    {
+        <MudAlert Severity="Severity.Error" Class="mt-3">@passwordErrorMessage</MudAlert>
+    }
+
+    <MudButton Color="Color.Primary" Variant="Variant.Filled" Class="mt-4" OnClick="ChangePasswordAsync">
+        Passwort ändern
+    </MudButton>
+</MudPaper>
+
+@code {
+    private MudForm profileForm = default!;
+    private readonly ProfileInputModel profileModel = new();
+    private string? profileErrorMessage;
+
+    private MudForm passwordForm = default!;
+    private readonly PasswordInputModel passwordModel = new();
+    private string? passwordErrorMessage;
+
+    [SupplyParameterFromQuery]
+    private bool? PasswordChanged { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (PasswordChanged == true)
+        {
+            Snackbar.Add("Passwort geändert.", Severity.Success);
+        }
+
+        var user = await GetCurrentUserAsync();
+        if (user is not null)
+        {
+            profileModel.DisplayName = user.DisplayName;
+            profileModel.Email = user.Email;
+        }
+    }
+
+    private async Task<AppUser?> GetCurrentUserAsync()
+    {
+        var authState = await AuthState.GetAuthenticationStateAsync();
+        var userId = authState.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        return userId is null ? null : await UserManager.FindByIdAsync(userId);
+    }
+
+    private string? ConfirmPasswordMatches(string confirmPassword) =>
+        confirmPassword == passwordModel.NewPassword ? null : "Passwörter stimmen nicht überein.";
+
+    private async Task SaveProfileAsync()
+    {
+        await profileForm.ValidateAsync();
+        if (!profileForm.IsValid)
+        {
+            return;
+        }
+
+        var user = await GetCurrentUserAsync();
+        if (user is null)
+        {
+            profileErrorMessage = "Benutzer konnte nicht ermittelt werden.";
+            return;
+        }
+
+        user.DisplayName = profileModel.DisplayName;
+        user.Email = profileModel.Email;
+        var result = await UserManager.UpdateAsync(user);
+        if (!result.Succeeded)
+        {
+            profileErrorMessage = string.Join(", ", result.Errors.Select(e => e.Description));
+            return;
+        }
+
+        profileErrorMessage = null;
+        Snackbar.Add("Profil gespeichert.", Severity.Success);
+    }
+
+    private async Task ChangePasswordAsync()
+    {
+        await passwordForm.ValidateAsync();
+        if (!passwordForm.IsValid)
+        {
+            return;
+        }
+
+        var user = await GetCurrentUserAsync();
+        if (user is null)
+        {
+            passwordErrorMessage = "Benutzer konnte nicht ermittelt werden.";
+            return;
+        }
+
+        var result = await UserManager.ChangePasswordAsync(user, passwordModel.CurrentPassword, passwordModel.NewPassword);
+        if (!result.Succeeded)
+        {
+            passwordErrorMessage = string.Join(", ", result.Errors.Select(e => e.Description));
+            return;
+        }
+
+        passwordErrorMessage = null;
+
+        // Keep the bundled Radicale instance's credential in lockstep with the one FamilyCloud account it
+        // mirrors — see the seed-time provisioning in Program.cs for why only that account propagates.
+        // Program.cs only ever creates this account once, for the very first admin on an empty database
+        // — anyone else (or an admin whose managed account got deleted) would otherwise have no way to
+        // get one, so create it here on first password change instead of silently skipping.
+        var managedAccount = await Db.CalendarAccounts.FirstOrDefaultAsync(a => a.IsManaged && a.Username == user.UserName);
+        await RadicaleProvisioner.ProvisionAsync(user.UserName!, passwordModel.NewPassword);
+        if (managedAccount is not null)
+        {
+            managedAccount.EncryptedAppPassword = PasswordProtector.Encrypt(passwordModel.NewPassword);
+        }
+        else
+        {
+            var radicaleBaseUrl = Configuration["Radicale:BaseUrl"] ?? "http://radicale:5232/";
+            Db.CalendarAccounts.Add(new CalendarAccount
+            {
+                Id = Guid.NewGuid(),
+                DisplayName = "Radicale (integriert)",
+                BaseUrl = radicaleBaseUrl,
+                Username = user.UserName!,
+                EncryptedAppPassword = PasswordProtector.Encrypt(passwordModel.NewPassword),
+                IsManaged = true,
+                CreatedUtc = DateTimeOffset.UtcNow,
+            });
+        }
+        await Db.SaveChangesAsync();
+
+        // Changing the password rotates the security stamp; refresh the cookie so the user isn't
+        // immediately signed out by their own password change. That has to happen via a full page
+        // navigation to a plain HTTP endpoint (see /Account/RefreshSignIn) — from here, inside the
+        // interactive circuit, the response has already started and writing Set-Cookie would throw.
+        var returnUrl = Uri.EscapeDataString("account?passwordChanged=true");
+        NavigationManager.NavigateTo($"Account/RefreshSignIn?returnUrl={returnUrl}", forceLoad: true);
+    }
+
+    private sealed class ProfileInputModel
+    {
+        [Required]
+        public string DisplayName { get; set; } = "";
+
+        public string? Email { get; set; }
+    }
+
+    private sealed class PasswordInputModel
+    {
+        [Required]
+        public string CurrentPassword { get; set; } = "";
+
+        [Required]
+        public string NewPassword { get; set; } = "";
+
+        [Required]
+        public string ConfirmPassword { get; set; } = "";
+    }
+}

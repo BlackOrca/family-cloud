@@ -1,7 +1,11 @@
 @using System.ComponentModel.DataAnnotations
 @using Microsoft.AspNetCore.Identity
+@using Microsoft.EntityFrameworkCore
 @using FamilyCloud.Core.Data
+@using FamilyCloud.Family.Domain
+@using FamilyCloud.Server.Data
 @inject UserManager<AppUser> UserManager
+@inject FamilyCloudDbContext Db
 
 <MudDialog>
     <DialogContent>
@@ -9,6 +13,7 @@
             <MudTextField T="string" Label="Benutzername" @bind-Value="model.UserName" Required="true" RequiredError="Pflichtfeld" />
             <MudTextField T="string" Label="Anzeigename" @bind-Value="model.DisplayName" Required="true" RequiredError="Pflichtfeld" Class="mt-3" />
             <MudTextField T="string" Label="Passwort" @bind-Value="model.Password" InputType="InputType.Password" Required="true" RequiredError="Pflichtfeld" Class="mt-3" />
+            <MudSwitch T="bool" @bind-Value="model.IsAdmin" Label="Admin" Class="mt-3" />
         </MudForm>
         @if (!string.IsNullOrEmpty(errorMessage))
         {
@@ -46,6 +51,19 @@
         var result = await UserManager.CreateAsync(user, model.Password);
         if (result.Succeeded)
         {
+            // Exactly one family exists today — every user is a member of it (see Program.cs's seed
+            // flow for the same assumption, and the Phase 1 architecture roadmap for why).
+            var familyId = (await Db.Families.FirstAsync()).Id;
+            Db.FamilyMembers.Add(new FamilyMember
+            {
+                Id = Guid.NewGuid(),
+                FamilyId = familyId,
+                UserId = user.Id,
+                Role = model.IsAdmin ? FamilyRole.Admin : FamilyRole.Member,
+                JoinedUtc = DateTimeOffset.UtcNow,
+            });
+            await Db.SaveChangesAsync();
+
             MudDialog.Close(DialogResult.Ok(true));
         }
         else
@@ -66,5 +84,7 @@
 
         [Required]
         public string Password { get; set; } = "";
+
+        public bool IsAdmin { get; set; }
     }
 }

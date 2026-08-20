@@ -13,10 +13,17 @@
     <PackageReference Include="Microsoft.AspNetCore.Diagnostics.EntityFrameworkCore" Version="10.0.11" />
     <!-- Needed at design time so `dotnet ef` can use this project as the startup project for migrations. -->
     <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.11" PrivateAssets="all" />
+    <!-- Production database provider. -->
+    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.0" />
+    <!-- Test-mode fallback provider only (see Program.cs's Database:Provider switch) — keeps
+         integration tests fast and self-contained without a live Postgres server. -->
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.11" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\FamilyCloud.Core\FamilyCloud.Core.csproj" />
+    <ProjectReference Include="..\FamilyCloud.Calendar\FamilyCloud.Calendar.csproj" />
+    <ProjectReference Include="..\FamilyCloud.Family\FamilyCloud.Family.csproj" />
     <ProjectReference Include="..\FamilyCloud.UI\FamilyCloud.UI.csproj" />
     <ProjectReference Include="..\FamilyCloud.ServiceDefaults\FamilyCloud.ServiceDefaults.csproj" />
     <ProjectReference Include="..\FamilyCloud.Contracts\FamilyCloud.Contracts.csproj" />

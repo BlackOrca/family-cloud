@@ -1,11 +1,11 @@
 @page "/admin/calendars"
 @attribute [Authorize]
 @using Microsoft.EntityFrameworkCore
-@using FamilyCloud.Core.CalDav
-@using FamilyCloud.Core.Data
-@using FamilyCloud.Core.Domain
-@using FamilyCloud.Core.Security
-@using FamilyCloud.Core.Sync
+@using FamilyCloud.Calendar.CalDav
+@using FamilyCloud.Calendar.Domain
+@using FamilyCloud.Calendar.Security
+@using FamilyCloud.Calendar.Sync
+@using FamilyCloud.Server.Data
 @inject FamilyCloudDbContext Db
 @inject CalendarSyncService SyncService
 @inject ICalDavPasswordProtector PasswordProtector
@@ -97,8 +97,15 @@ else
 
 @code {
     private List<CalendarAccount>? accounts;
+    private Guid _familyId;
 
-    protected override async Task OnInitializedAsync() => await LoadAccountsAsync();
+    protected override async Task OnInitializedAsync()
+    {
+        // Exactly one family exists today (see Program.cs's seed flow and the Phase 1 architecture
+        // roadmap) — every newly discovered/created calendar belongs to it.
+        _familyId = (await Db.Families.FirstAsync()).Id;
+        await LoadAccountsAsync();
+    }
 
     private async Task LoadAccountsAsync()
     {
@@ -144,7 +151,7 @@ else
     {
         try
         {
-            await SyncService.DiscoverCalendarsAsync(account, new CalDavCredentials(account.Username, password));
+            await SyncService.DiscoverCalendarsAsync(account, _familyId, new CalDavCredentials(account.Username, password));
             Snackbar.Add($"Kalender für '{account.DisplayName}' aktualisiert.", Severity.Success);
         }
         catch (CalDavException ex)
@@ -165,7 +172,7 @@ else
         var password = PasswordProtector.Decrypt(account.EncryptedAppPassword);
         try
         {
-            await SyncService.CreateCalendarAsync(account, new CalDavCredentials(account.Username, password), input.DisplayName, NormalizeColor(input.ColorHex));
+            await SyncService.CreateCalendarAsync(account, _familyId, new CalDavCredentials(account.Username, password), input.DisplayName, NormalizeColor(input.ColorHex));
             Snackbar.Add($"Kalender '{input.DisplayName}' angelegt.", Severity.Success);
         }
         catch (CalDavException ex)

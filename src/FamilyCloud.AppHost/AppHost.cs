@@ -34,6 +34,28 @@ var radicaleAuthInit = builder.AddContainer("radicale-auth-init", "busybox")
         });
     });
 
+// PostgreSQL — the app database (see the Phase 1 architecture roadmap for why this replaced SQLite:
+// mainly concurrent-write robustness once multiple family members and feature areas write at once).
+// The database resource is named "DefaultConnection" (not e.g. "familyclouddb") purely so the
+// connection string Aspire injects into the server lands under the same
+// ConnectionStrings:DefaultConnection config key plain `dotnet run` and docker-compose already use.
+var postgres = builder.AddPostgres("postgres")
+    .WithDataVolume("familycloud-postgres-data")
+    .PublishAsDockerComposeService((_, service) =>
+    {
+        service.Restart = "unless-stopped";
+
+        service.Volumes.Clear();
+        service.Volumes.Add(new Aspire.Hosting.Docker.Resources.ServiceNodes.Volume
+        {
+            Name = "postgres-data",
+            Type = "bind",
+            Source = "./data/postgres",
+            Target = "/var/lib/postgresql/data",
+        });
+    });
+var familyCloudDb = postgres.AddDatabase("DefaultConnection", databaseName: "familycloud");
+
 // Bundled "internal" CalDAV server — FamilyCloud.Server connects to it like any other generic CalDAV
 // account (same ICalDavClient, no special-casing). This container is never port-published beyond
 // local dev / the compose-internal network, consistent with the no-TLS/internal-network-only posture
@@ -99,6 +121,8 @@ var radicale = builder.AddContainer("radicale", "tomsquest/docker-radicale")
 
 builder.AddProject<Projects.FamilyCloud_Server>("server")
     .WaitFor(radicale)
+    .WaitFor(familyCloudDb)
+    .WithReference(familyCloudDb)
     .PublishAsDockerComposeService((_, service) =>
     {
         service.Restart = "unless-stopped";
@@ -110,9 +134,11 @@ builder.AddProject<Projects.FamilyCloud_Server>("server")
         // already threads through HTTP_PORTS, so both sides of the mapping move together if that ever changes.
         service.Ports.Add("5253:${SERVER_PORT}");
 
-        // Bind mount under ./data next to docker-compose.yaml (SQLite file + Data Protection keys) —
-        // same reasoning as Radicale's above. .WithVolume(...) doesn't support project resources at
-        // all, so this is set directly on the compose model regardless.
+        // Bind mount under ./data next to docker-compose.yaml — now just the Data Protection key ring
+        // (the database itself lives in the separate postgres-data volume above since the PostgreSQL
+        // switch, see the Phase 1 architecture roadmap). Same reasoning as Radicale's above:
+        // .WithVolume(...) doesn't support project resources at all, so this is set directly on the
+        // compose model regardless.
         service.Volumes.Add(new Aspire.Hosting.Docker.Resources.ServiceNodes.Volume
         {
             Name = "server-data",
@@ -132,19 +158,21 @@ builder.AddProject<Projects.FamilyCloud_Server>("server")
         });
 
         // A freshly created bind-mount directory is root-owned on a real Linux host, but the aspnet
-        // base image runs as a non-root user by default — without this, SQLite can't create familycloud.db
-        // under /data ("unable to open database file"). Running as root is an accepted trade for
-        // simplicity here, consistent with the no-TLS/internal-network-only posture already in place.
+        // base image runs as a non-root user by default — without this, the server can't create the
+        // Data Protection key ring under /data. Running as root is an accepted trade for simplicity
+        // here, consistent with the no-TLS/internal-network-only posture already in place.
         service.User = "0:0";
     })
     .WithEnvironment(context =>
     {
         if (context.ExecutionContext.IsPublishMode)
         {
-            // In local dev these come from user-secrets (see Program.cs); Docker Compose has no
-            // equivalent, so surface them as blank .env placeholders the deployer fills in before the
-            // first `docker compose up` — same pattern used for SERVER_IMAGE/SERVER_PORT above.
-            context.EnvironmentVariables["ConnectionStrings__DefaultConnection"] = "Data Source=/data/familycloud.db";
+            // ConnectionStrings__DefaultConnection itself comes from .WithReference(familyCloudDb)
+            // above, not set here. In local dev the rest come from user-secrets (see Program.cs);
+            // Docker Compose has no equivalent, so surface them as blank .env placeholders the
+            // deployer fills in before the first `docker compose up` — same pattern used for
+            // SERVER_IMAGE/SERVER_PORT above.
+            context.EnvironmentVariables["DataDirectory"] = "/data";
             context.EnvironmentVariables["Jwt__SigningKey"] = "${JWT_SIGNING_KEY}";
             context.EnvironmentVariables["SeedAdmin__UserName"] = "${SEED_ADMIN_USERNAME}";
             context.EnvironmentVariables["SeedAdmin__Password"] = "${SEED_ADMIN_PASSWORD}";

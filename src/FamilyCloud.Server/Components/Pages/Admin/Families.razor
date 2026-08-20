@@ -1,0 +1,64 @@
+@page "/admin/families"
+@attribute [Authorize]
+@using Microsoft.EntityFrameworkCore
+@using FamilyCloud.Core.Data
+@using FamilyCloud.Family.Domain
+@using FamilyCloud.Server.Data
+@inject FamilyCloudDbContext Db
+@inject ISnackbar Snackbar
+
+<PageTitle>Familie</PageTitle>
+
+<MudText Typo="Typo.h4" Class="mb-4">Familie</MudText>
+
+@if (members is null)
+{
+    <MudProgressCircular Indeterminate="true" />
+}
+else
+{
+    <MudTable Items="@members" Hover="true">
+        <HeaderContent>
+            <MudTh>Mitglied</MudTh>
+            <MudTh>Rolle</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd DataLabel="Mitglied">@context.User.DisplayName<br /><MudText Typo="Typo.caption">@context.User.UserName</MudText></MudTd>
+            <MudTd DataLabel="Rolle">
+                <MudSelect T="FamilyRole" Value="@context.Membership.Role"
+                           ValueChanged="@((FamilyRole role) => SetRoleAsync(context.Membership, role))"
+                           Dense="true" Margin="Margin.Dense">
+                    <MudSelectItem Value="FamilyRole.Member">Mitglied</MudSelectItem>
+                    <MudSelectItem Value="FamilyRole.Admin">Admin</MudSelectItem>
+                </MudSelect>
+            </MudTd>
+        </RowTemplate>
+    </MudTable>
+}
+
+@code {
+    private sealed record Row(AppUser User, FamilyMember Membership);
+
+    private List<Row>? members;
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        members = await (
+            from membership in Db.FamilyMembers
+            join user in Db.Users on membership.UserId equals user.Id
+            orderby user.DisplayName
+            select new Row(user, membership)
+        ).ToListAsync();
+    }
+
+    private async Task SetRoleAsync(FamilyMember membership, FamilyRole role)
+    {
+        membership.Role = role;
+        await Db.SaveChangesAsync();
+        Snackbar.Add("Rolle gespeichert.", Severity.Success);
+        // Role changes only take effect in a user's JWT on their next login — the currently
+        // logged-in App/API session keeps whatever role it already has until then.
+    }
+}

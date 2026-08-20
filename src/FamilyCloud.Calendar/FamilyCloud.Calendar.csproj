@@ -1,0 +1,47 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\FamilyCloud.Core\FamilyCloud.Core.csproj" />
+    <ProjectReference Include="..\FamilyCloud.Contracts\FamilyCloud.Contracts.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="FamilyCloud.Calendar.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- HttpContext/IEndpointRouteBuilder/minimal-API types come from the ASP.NET Core shared
+         framework, not a NuGet package, since this isn't a Sdk.Web project. -->
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Sdk.Web projects (like Server) get these as implicit global usings automatically; a plain
+         Sdk project doesn't, so they're declared explicitly here. -->
+    <Using Include="Microsoft.AspNetCore.Builder" />
+    <Using Include="Microsoft.AspNetCore.Hosting" />
+    <Using Include="Microsoft.AspNetCore.Http" />
+    <Using Include="Microsoft.AspNetCore.Routing" />
+    <Using Include="Microsoft.Extensions.Configuration" />
+    <Using Include="Microsoft.Extensions.DependencyInjection" />
+    <Using Include="Microsoft.Extensions.Hosting" />
+    <Using Include="Microsoft.Extensions.Logging" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Data Protection and Hosting abstractions come transitively via the Microsoft.AspNetCore.App
+         FrameworkReference above; listed as direct PackageReferences they'd just be flagged NU1510
+         (redundant) since that framework already supersedes them. -->
+    <PackageReference Include="BCrypt.Net-Next" Version="4.2.0" />
+    <PackageReference Include="Ical.Net" Version="5.2.3" />
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.11" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore" Version="10.0.11" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+</Project>

@@ -3,18 +3,23 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Identity;
-using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using MudBlazor.Services;
-using FamilyCloud.Core.CalDav;
+using FamilyCloud.Calendar;
+using FamilyCloud.Calendar.Api;
+using FamilyCloud.Calendar.Domain;
+using FamilyCloud.Calendar.Security;
+using FamilyCloud.Core.Auth;
 using FamilyCloud.Core.Data;
-using FamilyCloud.Core.Domain;
-using FamilyCloud.Core.Security;
 using FamilyCloud.Core.Sync;
+using FamilyCloud.Family;
+using FamilyCloud.Family.Api;
+using FamilyCloud.Family.Domain;
 using FamilyCloud.Server.Api;
 using FamilyCloud.Server.Components;
 using FamilyCloud.Server.Components.Account;
+using FamilyCloud.Server.Data;
 using FamilyCloud.Server.Services;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -30,16 +35,7 @@ builder.Services.AddCascadingAuthenticationState();
 builder.Services.AddScoped<IdentityRedirectManager>();
 builder.Services.AddScoped<AuthenticationStateProvider, IdentityRevalidatingAuthenticationStateProvider>();
 
-builder.Services.AddHttpClient<ICalDavClient, CalDavClient>()
-    // Radicale's bundled server replies HTTP/1.0 and closes the connection after every response
-    // (no keep-alive). Without this, SocketsHttpHandler's connection pool intermittently tries to
-    // reuse a connection Radicale already closed, surfacing as HttpIOException "ResponseEnded".
-    .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler { PooledConnectionLifetime = TimeSpan.Zero });
-builder.Services.AddScoped<CalendarSyncService>();
-builder.Services.AddScoped<CalendarWriteService>();
-builder.Services.AddScoped<SyncEventPublisher>();
 builder.Services.AddSingleton<AppTitleNotifier>();
-builder.Services.AddHostedService<CalendarPollingService>();
 
 var jwtSigningKey = builder.Configuration["Jwt:SigningKey"]
     ?? throw new InvalidOperationException(
@@ -70,36 +66,59 @@ authenticationBuilder.AddJwtBearer(JwtBearerDefaults.AuthenticationScheme, optio
 builder.Services.AddAuthorizationBuilder()
     .AddPolicy("MobileApi", policy => policy
         .RequireAuthenticatedUser()
-        .AddAuthenticationSchemes(JwtBearerDefaults.AuthenticationScheme));
+        .AddAuthenticationSchemes(JwtBearerDefaults.AuthenticationScheme))
+    .AddPolicy("FamilyAdmin", policy => policy
+        .RequireAuthenticatedUser()
+        .AddAuthenticationSchemes(JwtBearerDefaults.AuthenticationScheme)
+        .RequireClaim(FamilyClaimTypes.FamilyRole, nameof(FamilyRole.Admin)));
 
-var connectionString = builder.Configuration.GetConnectionString("DefaultConnection") ?? throw new InvalidOperationException("Connection string 'DefaultConnection' not found.");
-
-// SQLite creates the database file itself but not its parent directory (e.g. the repo-root
-// .data/ folder for local dev, or a not-yet-existing bind mount target). The Data Protection key
-// ring lives alongside it so both survive on the same volume across container recreations.
-var dataSource = new SqliteConnectionStringBuilder(connectionString).DataSource;
-var dataDirectory = Path.GetDirectoryName(Path.GetFullPath(dataSource))
-    ?? throw new InvalidOperationException($"Could not determine a data directory from connection string data source '{dataSource}'.");
+// Where FamilyCloud's on-disk state lives that isn't the database itself: the Data Protection key
+// ring and the Radicale htpasswd file. Kept independent of the DB connection string (unlike before)
+// since that may now point at a Postgres server rather than a local SQLite file.
+var dataDirectory = Path.GetFullPath(
+    builder.Configuration["DataDirectory"] ?? Path.Combine(builder.Environment.ContentRootPath, "..", "..", ".data"));
 Directory.CreateDirectory(dataDirectory);
 
+var connectionString = builder.Configuration.GetConnectionString("DefaultConnection")
+    ?? throw new InvalidOperationException("Connection string 'DefaultConnection' not found.");
+// PostgreSQL in production; SQLite only as an explicit test-mode fallback (see
+// FamilyCloudWebApplicationFactory) so `dotnet test` doesn't need a live Postgres server.
+var useSqlite = string.Equals(builder.Configuration["Database:Provider"], "Sqlite", StringComparison.OrdinalIgnoreCase);
 builder.Services.AddDbContext<FamilyCloudDbContext>(options =>
-    options.UseSqlite(connectionString));
+{
+    if (useSqlite)
+    {
+        options.UseSqlite(connectionString);
+    }
+    else
+    {
+        options.UseNpgsql(connectionString);
+    }
+});
+// Feature-project-internal code (Calendar's sync services and endpoint handlers, etc.) can't
+// reference this concrete, composed context without a circular project reference, so it depends on
+// the abstract DbContext instead — resolved here to the same scoped instance. See the Phase 1
+// architecture roadmap for the full reasoning.
+builder.Services.AddScoped<DbContext>(sp => sp.GetRequiredService<FamilyCloudDbContext>());
 builder.Services.AddDatabaseDeveloperPageExceptionFilter();
+
+// Generic, cross-feature — every write path (Calendar's, Settings', and future Todos'/Photos') uses
+// this the same way to record a SyncEvent atomically alongside its own SaveChangesAsync.
+builder.Services.AddScoped<SyncEventPublisher>();
 
 builder.Services.AddDataProtection()
     .SetApplicationName("FamilyCloud")
     .PersistKeysToFileSystem(new DirectoryInfo(Path.Combine(dataDirectory, "keys")));
-builder.Services.AddSingleton<ICalDavPasswordProtector, CalDavPasswordProtector>();
 
 // The htpasswd file the bundled Radicale container's [auth] section is configured to read (see the
-// repo-root radicale/config file and its mount in AppHost.cs). Defaults to alongside the SQLite/keys
-// data directory for plain `dotnet run` without Aspire; Radicale__HtpasswdPath overrides it in both
-// the `aspire run` and docker-compose paths, pointing at the mount they actually share with Radicale.
+// repo-root radicale/config file and its mount in AppHost.cs). Defaults to alongside the data
+// directory for plain `dotnet run` without Aspire; Radicale__HtpasswdPath overrides it in both the
+// `aspire run` and docker-compose paths, pointing at the mount they actually share with Radicale.
 var radicaleHtpasswdPath = builder.Configuration["Radicale:HtpasswdPath"]
     ?? Path.Combine(dataDirectory, "radicale-htpasswd", "users");
 var radicaleBaseUrl = builder.Configuration["Radicale:BaseUrl"] ?? "http://radicale:5232/";
-builder.Services.AddSingleton<IRadicaleCredentialProvisioner>(
-    _ => new RadicaleCredentialProvisioner(radicaleHtpasswdPath));
+builder.Services.AddCalendarFeature(radicaleHtpasswdPath);
+builder.Services.AddFamilyFeature();
 
 builder.Services.AddIdentityCore<AppUser>(options =>
     {
@@ -117,12 +136,22 @@ var app = builder.Build();
 
 app.MapDefaultEndpoints();
 
-// Apply pending migrations and seed the initial admin account (if none exists yet) on every
-// startup — cheap at household scale and means a fresh container just works.
+// Apply pending migrations and seed the initial admin account + its family (if none exists yet) on
+// every startup — cheap at household scale and means a fresh container just works.
 await using (var scope = app.Services.CreateAsyncScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<FamilyCloudDbContext>();
-    await db.Database.MigrateAsync();
+    if (useSqlite)
+    {
+        // Migration files are generated for PostgreSQL (see Data/Migrations); applying them against
+        // SQLite would use provider-mismatched column types. Test-mode databases are always fresh and
+        // short-lived, so building the schema directly from the current model is simpler and correct.
+        await db.Database.EnsureCreatedAsync();
+    }
+    else
+    {
+        await db.Database.MigrateAsync();
+    }
 
     var userManager = scope.ServiceProvider.GetRequiredService<UserManager<AppUser>>();
     if (!await userManager.Users.AnyAsync())
@@ -145,6 +174,25 @@ await using (var scope = app.Services.CreateAsyncScope())
             }
             app.Logger.LogInformation("Seeded initial admin user {UserName}.", seedUserName);
 
+            // Every deployment starts with exactly one family; the seed admin is its first Admin
+            // member. Multi-family operation isn't built yet (see the Phase 1 architecture roadmap)
+            // but the schema already supports it.
+            var family = new FamilyCloud.Family.Domain.Family
+            {
+                Id = Guid.NewGuid(),
+                Name = app.Configuration["SeedAdmin:FamilyName"] ?? "Familie",
+                CreatedUtc = DateTimeOffset.UtcNow,
+            };
+            db.Families.Add(family);
+            db.FamilyMembers.Add(new FamilyMember
+            {
+                Id = Guid.NewGuid(),
+                FamilyId = family.Id,
+                UserId = admin.Id,
+                Role = FamilyRole.Admin,
+                JoinedUtc = DateTimeOffset.UtcNow,
+            });
+
             // Mirror the seed admin's credentials into the bundled Radicale instance so server<->Radicale
             // communication is actually authenticated (it ships with auth disabled otherwise), and record
             // a matching, system-managed CalendarAccount so the admin doesn't have to add it by hand.
@@ -163,7 +211,7 @@ await using (var scope = app.Services.CreateAsyncScope())
                 CreatedUtc = DateTimeOffset.UtcNow,
             });
             await db.SaveChangesAsync();
-            app.Logger.LogInformation("Provisioned managed Radicale account for {UserName}.", seedUserName);
+            app.Logger.LogInformation("Provisioned managed Radicale account and family for {UserName}.", seedUserName);
         }
         else
         {
@@ -197,7 +245,9 @@ app.MapRazorComponents<App>()
 app.MapAdditionalIdentityEndpoints();
 
 app.MapAuthEndpoints();
-app.MapCalendarsEndpoints();
+app.MapAccountEndpoints();
+app.MapFamilyEndpoints();
+app.MapCalendarEndpoints();
 app.MapSettingsEndpoints();
 app.MapSyncEndpoints();
 

@@ -1,7 +1,7 @@
 @inherits LayoutComponentBase
 @implements IDisposable
 @using Microsoft.EntityFrameworkCore
-@using FamilyCloud.Core.Data
+@using FamilyCloud.Server.Data
 @using FamilyCloud.Server.Services
 @inject FamilyCloudDbContext Db
 @inject AppTitleNotifier TitleNotifier
@@ -32,10 +32,11 @@
     <MudDrawer Open="true" Elevation="1" Variant="DrawerVariant.Persistent">
         <MudNavMenu>
             <MudNavLink Href="/admin/users" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.People">Benutzer</MudNavLink>
+            <MudNavLink Href="/admin/families" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.FamilyRestroom">Familie</MudNavLink>
             <MudNavLink Href="/admin/calendars" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.CalendarMonth">Kalenderkonten</MudNavLink>
             <MudNavLink Href="/admin/permissions" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Lock">Berechtigungen</MudNavLink>
             <MudNavLink Href="/admin/settings" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Settings">Einstellungen</MudNavLink>
-            <MudNavLink Href="/admin/password" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Password">Passwort ändern</MudNavLink>
+            <MudNavLink Href="/account" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.AccountCircle">Mein Account</MudNavLink>
         </MudNavMenu>
     </MudDrawer>
     <MudMainContent>

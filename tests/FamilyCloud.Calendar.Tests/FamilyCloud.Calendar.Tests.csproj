@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="coverlet.collector" Version="10.0.1" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.11" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.9.0" />
+    <PackageReference Include="xunit" Version="2.9.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="4.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- References Server (not just Calendar) because SqliteTestDb exercises the real, composed
+         FamilyCloudDbContext that lives in Server — that concrete type is what production code
+         actually runs against, and test projects (unlike feature projects) are leaf nodes so this
+         creates no circular reference. -->
+    <ProjectReference Include="..\..\src\FamilyCloud.Calendar\FamilyCloud.Calendar.csproj" />
+    <ProjectReference Include="..\..\src\FamilyCloud.Server\FamilyCloud.Server.csproj" />
+  </ItemGroup>
+
+</Project>

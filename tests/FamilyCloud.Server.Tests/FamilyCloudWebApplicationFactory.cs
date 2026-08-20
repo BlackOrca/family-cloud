@@ -22,6 +22,10 @@ public sealed class FamilyCloudWebApplicationFactory : WebApplicationFactory<Pro
         Directory.CreateDirectory(dataDirectory);
 
         builder.UseEnvironment("Development");
+        // SQLite (not the production PostgreSQL provider) — keeps integration tests fast and
+        // self-contained without requiring a live Postgres server for `dotnet test` to pass. See
+        // Program.cs's Database:Provider switch and the Phase 1 architecture roadmap for why.
+        builder.UseSetting("Database:Provider", "Sqlite");
         builder.UseSetting("ConnectionStrings:DefaultConnection", $"Data Source={Path.Combine(dataDirectory, "familycloud.db")}");
         builder.UseSetting("Jwt:SigningKey", "test-only-signing-key-at-least-32-characters-long");
         builder.UseSetting("SeedAdmin:UserName", SeedAdminUserName);

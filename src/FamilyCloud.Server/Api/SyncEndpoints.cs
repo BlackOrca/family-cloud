@@ -1,6 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using FamilyCloud.Contracts.Sync;
-using FamilyCloud.Core.Data;
+using FamilyCloud.Server.Data;
 
 namespace FamilyCloud.Server.Api;
 

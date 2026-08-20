@@ -1,0 +1,94 @@
+@page "/account"
+
+<MudContainer MaxWidth="MaxWidth.Small" Class="mt-4">
+    <MudPaper Class="pa-4 mb-4" Elevation="2">
+        <MudText Typo="Typo.h6" Class="mb-2">Profil</MudText>
+        <MudForm Model="@_profileModel" @ref="_profileForm">
+            <MudTextField T="string" Label="Anzeigename" @bind-Value="_profileModel.DisplayName"
+                          Required="true" RequiredError="Pflichtfeld" />
+            <MudTextField T="string" Label="E-Mail" @bind-Value="_profileModel.Email" InputType="InputType.Email" Class="mt-3" />
+        </MudForm>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" Class="mt-4" OnClick="SaveProfileAsync">
+            Profil speichern
+        </MudButton>
+    </MudPaper>
+
+    <MudPaper Class="pa-4" Elevation="2">
+        <MudText Typo="Typo.h6" Class="mb-2">Passwort ändern</MudText>
+        <MudForm Model="@_passwordModel" @ref="_passwordForm">
+            <MudTextField T="string" Label="Aktuelles Passwort" @bind-Value="_passwordModel.CurrentPassword" InputType="InputType.Password"
+                          Required="true" RequiredError="Pflichtfeld" />
+            <MudTextField T="string" Label="Neues Passwort" @bind-Value="_passwordModel.NewPassword" InputType="InputType.Password"
+                          Required="true" RequiredError="Pflichtfeld" Class="mt-3" />
+        </MudForm>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" Class="mt-4" OnClick="ChangePasswordAsync">
+            Passwort ändern
+        </MudButton>
+    </MudPaper>
+</MudContainer>
+
+@code {
+    [Inject] private ApiClient Api { get; set; } = default!;
+    [Inject] private ISnackbar Snackbar { get; set; } = default!;
+
+    private MudForm _profileForm = default!;
+    private readonly ProfileModel _profileModel = new();
+
+    private MudForm _passwordForm = default!;
+    private readonly PasswordModel _passwordModel = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        var profile = await Api.GetAccountProfileAsync();
+        if (profile is not null)
+        {
+            _profileModel.DisplayName = profile.DisplayName;
+            _profileModel.Email = profile.Email;
+        }
+    }
+
+    private async Task SaveProfileAsync()
+    {
+        await _profileForm.ValidateAsync();
+        if (!_profileForm.IsValid)
+        {
+            return;
+        }
+
+        var success = await Api.UpdateProfileAsync(_profileModel.DisplayName, _profileModel.Email);
+        // Note: the app bar's displayed name comes from the login response and only refreshes on
+        // the next login — an accepted simplification for now.
+        Snackbar.Add(success ? "Profil gespeichert." : "Profil konnte nicht gespeichert werden.", success ? Severity.Success : Severity.Error);
+    }
+
+    private async Task ChangePasswordAsync()
+    {
+        await _passwordForm.ValidateAsync();
+        if (!_passwordForm.IsValid)
+        {
+            return;
+        }
+
+        var success = await Api.ChangePasswordAsync(_passwordModel.CurrentPassword, _passwordModel.NewPassword);
+        Snackbar.Add(success ? "Passwort geändert." : "Passwort ändern fehlgeschlagen.", success ? Severity.Success : Severity.Error);
+        if (success)
+        {
+            _passwordModel.CurrentPassword = "";
+            _passwordModel.NewPassword = "";
+        }
+    }
+
+    private sealed class ProfileModel
+    {
+        public string DisplayName { get; set; } = "";
+
+        public string? Email { get; set; }
+    }
+
+    private sealed class PasswordModel
+    {
+        public string CurrentPassword { get; set; } = "";
+
+        public string NewPassword { get; set; } = "";
+    }
+}

@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using FamilyCloud.Contracts.Account;
 using FamilyCloud.Contracts.Auth;
 using FamilyCloud.Contracts.Calendars;
 using FamilyCloud.Contracts.Settings;
@@ -31,6 +32,21 @@ internal sealed class ApiClient(HttpClient http)
         }
 
         return await response.Content.ReadFromJsonAsync<LoginResponse>(ct);
+    }
+
+    public async Task<AccountProfileDto?> GetAccountProfileAsync(CancellationToken ct = default) =>
+        await http.GetFromJsonAsync<AccountProfileDto>("api/account", ct);
+
+    public async Task<bool> UpdateProfileAsync(string displayName, string? email, CancellationToken ct = default)
+    {
+        var response = await http.PutAsJsonAsync("api/account/profile", new UpdateProfileRequest(displayName, email), ct);
+        return response.IsSuccessStatusCode;
+    }
+
+    public async Task<bool> ChangePasswordAsync(string currentPassword, string newPassword, CancellationToken ct = default)
+    {
+        var response = await http.PutAsJsonAsync("api/account/password", new ChangePasswordRequest(currentPassword, newPassword), ct);
+        return response.IsSuccessStatusCode;
     }
 
     public async Task<List<CalendarDto>> GetCalendarsAsync(CancellationToken ct = default)

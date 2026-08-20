@@ -4,8 +4,8 @@ using System.Net.Http.Json;
 using Microsoft.Extensions.DependencyInjection;
 using FamilyCloud.Contracts.Auth;
 using FamilyCloud.Contracts.Sync;
-using FamilyCloud.Core.Data;
 using FamilyCloud.Core.Domain;
+using FamilyCloud.Server.Data;
 
 namespace FamilyCloud.Server.Tests;
 

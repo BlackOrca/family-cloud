@@ -9,12 +9,13 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="BCrypt.Net-Next" Version="4.2.0" />
-    <PackageReference Include="Ical.Net" Version="5.2.3" />
-    <PackageReference Include="Microsoft.AspNetCore.DataProtection.Abstractions" Version="10.0.11" />
+    <!-- Only what AppUser (an IdentityUser<Guid>), SyncEventPublisher (the abstract EF Core DbContext)
+         and ClaimsPrincipalExtensions (JwtRegisteredClaimNames) need. The composed
+         FamilyCloudDbContext, its provider, and every feature-specific package (Ical.Net, BCrypt,
+         Data Protection) live with the project that actually owns them now — see the Phase 1
+         architecture roadmap. -->
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.11" />
     <PackageReference Include="Microsoft.AspNetCore.Identity.EntityFrameworkCore" Version="10.0.11" />
-    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.11" />
-    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.11" PrivateAssets="all" />
   </ItemGroup>
 
   <PropertyGroup>

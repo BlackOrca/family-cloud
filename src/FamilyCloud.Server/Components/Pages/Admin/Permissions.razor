@@ -1,8 +1,9 @@
 @page "/admin/permissions"
 @attribute [Authorize]
 @using Microsoft.EntityFrameworkCore
+@using FamilyCloud.Calendar.Domain
 @using FamilyCloud.Core.Data
-@using FamilyCloud.Core.Domain
+@using FamilyCloud.Server.Data
 @inject FamilyCloudDbContext Db
 @inject ISnackbar Snackbar
 
