@@ -32,6 +32,9 @@ public sealed class FamilyCloudWebApplicationFactory : WebApplicationFactory<Pro
         builder.UseSetting("SeedAdmin:Password", SeedAdminPassword);
         builder.UseSetting("Radicale:HtpasswdPath", Path.Combine(dataDirectory, "radicale-htpasswd", "users"));
         builder.UseSetting("Radicale:BaseUrl", "http://localhost:5232/");
+        // No live Immich instance in tests — Immich provisioning needs actual network round-trips
+        // (unlike Radicale's pure file write above), so skip it here rather than eating its retry delay.
+        builder.UseSetting("Photos:ProvisionImmich", "false");
     }
 
     public async Task<HttpClient> CreateAuthenticatedClientAsync(string? userName = null, string? password = null)

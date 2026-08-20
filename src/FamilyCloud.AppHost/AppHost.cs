@@ -119,8 +119,113 @@ var radicale = builder.AddContainer("radicale", "tomsquest/docker-radicale")
         };
     });
 
+// Immich — bundled third-party photo backend (unmodified image, like Radicale above), consumed only
+// via FamilyCloud.Photos' IImmichClient over its REST API. See the Phase 3 architecture roadmap: a
+// single shared Immich service account (the "broker" model) rather than one Immich user per family
+// member — FamilyCloud controls visibility itself via PhotoAlbumPermission, the same way it already
+// brokers the one shared Radicale credential for Calendar.
+//
+// Immich needs its own dedicated PostgreSQL — a build with a vector-search extension baked in, unlike
+// the app's own plain "postgres" resource above — plus Redis for its job queue. Both are
+// Immich-internal implementation details FamilyCloud.Server never talks to directly; only
+// immich-server itself is reached, via IImmichClient.
+var immichPostgres = builder.AddPostgres("immich-postgres")
+    // AddPostgres defaults to a docker.io-registry image; .WithImage() alone would leave that default
+    // Registry in place and get concatenated in front of this ghcr.io one, so it's set explicitly too.
+    .WithImage("immich-app/postgres", "14-vectorchord0.4.3-pgvectors0.2.0")
+    .WithImageRegistry("ghcr.io")
+    .WithEnvironment("POSTGRES_DB", "immich")
+    .WithDataVolume("familycloud-immich-postgres-data")
+    .PublishAsDockerComposeService((_, service) =>
+    {
+        service.Restart = "unless-stopped";
+
+        service.Volumes.Clear();
+        service.Volumes.Add(new Aspire.Hosting.Docker.Resources.ServiceNodes.Volume
+        {
+            Name = "immich-postgres-data",
+            Type = "bind",
+            Source = "./data/immich-postgres",
+            Target = "/var/lib/postgresql/data",
+        });
+    });
+
+var immichRedis = builder.AddContainer("immich-redis", "docker.io/valkey/valkey", "9")
+    .PublishAsDockerComposeService((_, service) => service.Restart = "unless-stopped");
+
+// Only orchestrated for `aspire publish -p docker-compose` (see build.ps1), never for local `aspire
+// run` — Immich's machine-learning container (face/object recognition) downloads several GB of models
+// and is CPU/RAM-heavy, unnecessary for local dev. Enabling it later in production needs no code
+// change here: Immich's own admin settings gate whether Smart Search/face recognition actually use it.
+IResourceBuilder<ContainerResource>? immichMachineLearning = null;
+if (builder.ExecutionContext.IsPublishMode)
+{
+    immichMachineLearning = builder.AddContainer("immich-machine-learning", "ghcr.io/immich-app/immich-machine-learning", "release")
+        .WithVolume("familycloud-immich-model-cache", "/cache")
+        .PublishAsDockerComposeService((_, service) =>
+        {
+            service.Restart = "unless-stopped";
+
+            service.Volumes.Clear();
+            service.Volumes.Add(new Aspire.Hosting.Docker.Resources.ServiceNodes.Volume
+            {
+                Name = "immich-model-cache",
+                Type = "bind",
+                Source = "./data/immich-model-cache",
+                Target = "/cache",
+            });
+        });
+}
+
+// Immich itself is always a container (unlike FamilyCloud.Server, which runs natively during `aspire
+// run` — see the Radicale BaseUrl branching below) — it reaches immich-postgres/immich-redis by
+// container DNS name in both local dev and docker-compose, so unlike Radicale's BaseUrl there's no
+// aspire-run-vs-publish split needed here.
+var immichServer = builder.AddContainer("immich-server", "ghcr.io/immich-app/immich-server", "release")
+    .WaitFor(immichPostgres)
+    .WaitFor(immichRedis)
+    .WithHttpEndpoint(port: 2283, targetPort: 2283, name: "http")
+    .WithEnvironment("DB_HOSTNAME", "immich-postgres")
+    .WithEnvironment("DB_USERNAME", "postgres")
+    .WithEnvironment("DB_PASSWORD", immichPostgres.Resource.PasswordParameter!)
+    .WithEnvironment("DB_DATABASE_NAME", "immich")
+    .WithEnvironment("REDIS_HOSTNAME", "immich-redis")
+    .WithEnvironment("TZ", "Europe/Berlin")
+    .WithVolume("familycloud-immich-uploads", "/data")
+    .WithEnvironment(context =>
+    {
+        // Left unset for local dev (no immich-machine-learning container — see above); Immich itself
+        // handles a missing/unreachable ML backend gracefully (affected jobs just fail, logged in its
+        // own admin UI, not a startup crash).
+        if (immichMachineLearning is not null)
+        {
+            context.EnvironmentVariables["IMMICH_MACHINE_LEARNING_URL"] = "http://immich-machine-learning:3003";
+        }
+    })
+    .PublishAsDockerComposeService((_, service) =>
+    {
+        service.Restart = "unless-stopped";
+
+        service.Volumes.Clear();
+        service.Volumes.Add(new Aspire.Hosting.Docker.Resources.ServiceNodes.Volume
+        {
+            Name = "immich-uploads",
+            Type = "bind",
+            Source = "./data/immich-uploads",
+            Target = "/data",
+        });
+
+        service.DependsOn["immich-postgres"] = new Aspire.Hosting.Docker.Resources.ComposeNodes.ServiceDependency { Condition = "service_started" };
+        service.DependsOn["immich-redis"] = new Aspire.Hosting.Docker.Resources.ComposeNodes.ServiceDependency { Condition = "service_started" };
+        if (immichMachineLearning is not null)
+        {
+            service.DependsOn["immich-machine-learning"] = new Aspire.Hosting.Docker.Resources.ComposeNodes.ServiceDependency { Condition = "service_started" };
+        }
+    });
+
 builder.AddProject<Projects.FamilyCloud_Server>("server")
     .WaitFor(radicale)
+    .WaitFor(immichServer)
     .WaitFor(familyCloudDb)
     .WithReference(familyCloudDb)
     .PublishAsDockerComposeService((_, service) =>
@@ -180,15 +285,17 @@ builder.AddProject<Projects.FamilyCloud_Server>("server")
             // Both containers reach each other by compose service name on the shared network.
             context.EnvironmentVariables["Radicale__BaseUrl"] = "http://radicale:5232/";
             context.EnvironmentVariables["Radicale__HtpasswdPath"] = "/radicale-auth/users";
+            context.EnvironmentVariables["Immich__BaseUrl"] = "http://immich-server:2283/";
         }
         else
         {
             // `aspire run`: the server runs natively on the host (not containerized), so it reaches
             // Radicale via the host port Aspire publishes for it (container DNS names like "radicale"
             // aren't resolvable outside the Docker network), and writes the htpasswd file straight to
-            // the same host path bind-mounted into Radicale's /auth above.
+            // the same host path bind-mounted into Radicale's /auth above. Same reasoning for Immich.
             context.EnvironmentVariables["Radicale__BaseUrl"] = "http://localhost:5232/";
             context.EnvironmentVariables["Radicale__HtpasswdPath"] = "../../.data/radicale-auth/users";
+            context.EnvironmentVariables["Immich__BaseUrl"] = "http://localhost:2283/";
         }
     });
 

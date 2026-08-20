@@ -6,6 +6,7 @@ using FamilyCloud.Core.Data;
 using FamilyCloud.Core.Domain;
 using FamilyCloud.Family.Domain;
 using FamilyCloud.Lists.Domain;
+using FamilyCloud.Photos.Domain;
 // Aliased: this file lives under FamilyCloud.Server, and every FamilyCloud.* project is itself a
 // child namespace of FamilyCloud — so the bare names "Calendar"/"Family" resolve to those sibling
 // project namespaces (FamilyCloud.Calendar/FamilyCloud.Family), not the classes the usings above
@@ -47,6 +48,12 @@ public class FamilyCloudDbContext(DbContextOptions<FamilyCloudDbContext> options
     public DbSet<ListItem> ListItems => Set<ListItem>();
 
     public DbSet<ListPermission> ListPermissions => Set<ListPermission>();
+
+    public DbSet<PhotoAlbum> PhotoAlbums => Set<PhotoAlbum>();
+
+    public DbSet<PhotoAlbumPermission> PhotoAlbumPermissions => Set<PhotoAlbumPermission>();
+
+    public DbSet<ImmichAccount> ImmichAccounts => Set<ImmichAccount>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -162,6 +169,37 @@ public class FamilyCloudDbContext(DbContextOptions<FamilyCloudDbContext> options
                 .WithMany()
                 .HasForeignKey(p => p.UserId)
                 .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        builder.Entity<PhotoAlbum>(e =>
+        {
+            e.Property(a => a.Name).HasMaxLength(200);
+            e.Property(a => a.ImmichAlbumId).HasMaxLength(64);
+
+            e.HasOne<FamilyEntity>()
+                .WithMany()
+                .HasForeignKey(a => a.FamilyId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        builder.Entity<PhotoAlbumPermission>(e =>
+        {
+            e.HasIndex(p => new { p.UserId, p.PhotoAlbumId }).IsUnique();
+
+            e.HasOne(p => p.PhotoAlbum)
+                .WithMany(a => a.Permissions)
+                .HasForeignKey(p => p.PhotoAlbumId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            e.HasOne<AppUser>()
+                .WithMany()
+                .HasForeignKey(p => p.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        builder.Entity<ImmichAccount>(e =>
+        {
+            e.Property(a => a.ImmichUserId).HasMaxLength(64);
         });
     }
 }

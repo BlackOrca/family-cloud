@@ -1,0 +1,114 @@
+@page "/photos"
+@implements IDisposable
+
+@if (_isLoading)
+{
+    <MudContainer MaxWidth="MaxWidth.Small" Class="mt-8 d-flex justify-center">
+        <MudProgressCircular Indeterminate="true" />
+    </MudContainer>
+}
+else
+{
+    <MudContainer MaxWidth="MaxWidth.Small" Class="mt-4">
+        @if (_loadError is not null)
+        {
+            <MudAlert Severity="Severity.Error" Class="mb-2">
+                @_loadError
+                <MudButton Variant="Variant.Text" Color="Color.Inherit" Class="ml-2" OnClick="LoadAlbumsAsync">Erneut versuchen</MudButton>
+            </MudAlert>
+        }
+        else
+        {
+            <PhotoAlbumsOverview Albums="_albums" OnAlbumClick="OpenAlbum" OnDeleteClick="DeleteAlbumAsync" />
+        }
+    </MudContainer>
+
+    <div style="position:fixed; bottom:24px; right:24px;">
+        <MudFab Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="OpenCreateDialogAsync" />
+    </div>
+}
+
+@code {
+    [Inject] private ApiClient Api { get; set; } = default!;
+    [Inject] private SyncCoordinator Sync { get; set; } = default!;
+    [Inject] private NavigationManager Nav { get; set; } = default!;
+    [Inject] private IDialogService DialogService { get; set; } = default!;
+    [Inject] private ISnackbar Snackbar { get; set; } = default!;
+
+    private const string ServerUnreachableMessage = "Server nicht erreichbar. Bitte später erneut versuchen.";
+
+    private bool _isLoading = true;
+    private List<PhotoAlbumDto> _albums = [];
+    private string? _loadError;
+    private IDisposable? _albumSub;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _albumSub = Sync.Subscribe(SyncResourceType.Photo, _ => LoadAlbumsAsync());
+        await LoadAlbumsAsync();
+        _isLoading = false;
+    }
+
+    private async Task LoadAlbumsAsync()
+    {
+        try
+        {
+            _loadError = null;
+            _albums = await Api.GetPhotoAlbumsAsync();
+        }
+        catch (Exception)
+        {
+            _loadError = ServerUnreachableMessage;
+        }
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private void OpenAlbum(PhotoAlbumDto album) => Nav.NavigateTo($"/photos/{album.Id}");
+
+    private async Task OpenCreateDialogAsync()
+    {
+        var dialog = await DialogService.ShowAsync<CreateAlbumDialog>("Neues Album");
+        var result = await dialog.Result;
+        if (result is null || result.Canceled || result.Data is not CreateAlbumDialog.InputModel input)
+        {
+            return;
+        }
+
+        try
+        {
+            var created = await Api.CreatePhotoAlbumAsync(input.Name);
+            if (created is null)
+            {
+                Snackbar.Add("Album konnte nicht erstellt werden.", Severity.Error);
+                return;
+            }
+            await LoadAlbumsAsync();
+        }
+        catch (Exception)
+        {
+            Snackbar.Add(ServerUnreachableMessage, Severity.Error);
+        }
+    }
+
+    private async Task DeleteAlbumAsync(PhotoAlbumDto album)
+    {
+        var confirmed = await DialogService.ShowMessageBoxAsync(
+            "Album löschen", $"'{album.Name}' wirklich löschen? Alle Fotos darin gehen dabei verloren.", yesText: "Löschen", cancelText: "Abbrechen");
+        if (confirmed != true)
+        {
+            return;
+        }
+
+        try
+        {
+            await Api.DeletePhotoAlbumAsync(album.Id);
+            await LoadAlbumsAsync();
+        }
+        catch (Exception)
+        {
+            Snackbar.Add(ServerUnreachableMessage, Severity.Error);
+        }
+    }
+
+    public void Dispose() => _albumSub?.Dispose();
+}

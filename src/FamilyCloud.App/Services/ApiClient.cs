@@ -5,6 +5,7 @@ using FamilyCloud.Contracts.Auth;
 using FamilyCloud.Contracts.Calendars;
 using FamilyCloud.Contracts.Families;
 using FamilyCloud.Contracts.Lists;
+using FamilyCloud.Contracts.Photos;
 using FamilyCloud.Contracts.Settings;
 using FamilyCloud.Contracts.Sync;
 
@@ -161,6 +162,81 @@ internal sealed class ApiClient(HttpClient http)
     public async Task<bool> RevokeListShareAsync(Guid listId, Guid userId, CancellationToken ct = default)
     {
         var response = await http.DeleteAsync($"api/lists/{listId}/share/{userId}", ct);
+        return response.IsSuccessStatusCode;
+    }
+
+    public async Task<List<PhotoAlbumDto>> GetPhotoAlbumsAsync(CancellationToken ct = default)
+    {
+        var albums = await http.GetFromJsonAsync<List<PhotoAlbumDto>>("api/photos/albums", ct);
+        return albums ?? [];
+    }
+
+    public async Task<PhotoAlbumDto?> CreatePhotoAlbumAsync(string name, CancellationToken ct = default)
+    {
+        var response = await http.PostAsJsonAsync("api/photos/albums", new CreatePhotoAlbumRequest(name), ct);
+        return response.IsSuccessStatusCode ? await response.Content.ReadFromJsonAsync<PhotoAlbumDto>(ct) : null;
+    }
+
+    public async Task<bool> DeletePhotoAlbumAsync(Guid albumId, CancellationToken ct = default)
+    {
+        var response = await http.DeleteAsync($"api/photos/albums/{albumId}", ct);
+        return response.IsSuccessStatusCode;
+    }
+
+    public async Task<List<PhotoAssetDto>> GetPhotoAlbumAssetsAsync(Guid albumId, CancellationToken ct = default)
+    {
+        var assets = await http.GetFromJsonAsync<List<PhotoAssetDto>>($"api/photos/albums/{albumId}/assets", ct);
+        return assets ?? [];
+    }
+
+    public async Task<PhotoAssetDto?> UploadPhotoAssetAsync(Guid albumId, string fileName, Stream content, string contentType, CancellationToken ct = default)
+    {
+        using var form = new MultipartFormDataContent();
+        var fileContent = new StreamContent(content);
+        fileContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(contentType);
+        form.Add(fileContent, "file", fileName);
+
+        var response = await http.PostAsync($"api/photos/albums/{albumId}/assets", form, ct);
+        return response.IsSuccessStatusCode ? await response.Content.ReadFromJsonAsync<PhotoAssetDto>(ct) : null;
+    }
+
+    public async Task<bool> DeletePhotoAssetAsync(Guid albumId, string assetId, CancellationToken ct = default)
+    {
+        var response = await http.DeleteAsync($"api/photos/albums/{albumId}/assets/{assetId}", ct);
+        return response.IsSuccessStatusCode;
+    }
+
+    /// <summary>Fetches one thumbnail's raw bytes — never exposed as a direct URL, since the API is
+    /// JWT-bearer authenticated and a plain <c>&lt;img src&gt;</c> can't carry that header. Callers
+    /// build a <c>data:</c> URI from the result (see PhotoAlbumDetail/PhotoGridView).</summary>
+    public async Task<(byte[] Bytes, string ContentType)?> GetPhotoThumbnailAsync(Guid albumId, string assetId, CancellationToken ct = default)
+    {
+        var response = await http.GetAsync($"api/photos/albums/{albumId}/assets/{assetId}/thumbnail", ct);
+        if (!response.IsSuccessStatusCode)
+        {
+            return null;
+        }
+
+        var bytes = await response.Content.ReadAsByteArrayAsync(ct);
+        var contentType = response.Content.Headers.ContentType?.MediaType ?? "image/jpeg";
+        return (bytes, contentType);
+    }
+
+    public async Task<List<PhotoAlbumShareDto>> GetPhotoAlbumSharesAsync(Guid albumId, CancellationToken ct = default)
+    {
+        var shares = await http.GetFromJsonAsync<List<PhotoAlbumShareDto>>($"api/photos/albums/{albumId}/share", ct);
+        return shares ?? [];
+    }
+
+    public async Task<bool> SharePhotoAlbumAsync(Guid albumId, Guid userId, bool canWrite, CancellationToken ct = default)
+    {
+        var response = await http.PutAsJsonAsync($"api/photos/albums/{albumId}/share", new SharePhotoAlbumRequest(userId, canWrite), ct);
+        return response.IsSuccessStatusCode;
+    }
+
+    public async Task<bool> RevokePhotoAlbumShareAsync(Guid albumId, Guid userId, CancellationToken ct = default)
+    {
+        var response = await http.DeleteAsync($"api/photos/albums/{albumId}/share/{userId}", ct);
         return response.IsSuccessStatusCode;
     }
 

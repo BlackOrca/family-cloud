@@ -18,6 +18,11 @@ using FamilyCloud.Family.Api;
 using FamilyCloud.Family.Domain;
 using FamilyCloud.Lists;
 using FamilyCloud.Lists.Api;
+using FamilyCloud.Photos;
+using FamilyCloud.Photos.Api;
+using FamilyCloud.Photos.Domain;
+using FamilyCloud.Photos.Immich;
+using FamilyCloud.Photos.Security;
 using FamilyCloud.Server.Api;
 using FamilyCloud.Server.Components;
 using FamilyCloud.Server.Components.Account;
@@ -123,6 +128,9 @@ builder.Services.AddCalendarFeature(radicaleHtpasswdPath);
 builder.Services.AddFamilyFeature();
 builder.Services.AddListsFeature();
 
+var immichBaseUrl = builder.Configuration["Immich:BaseUrl"] ?? "http://immich-server:2283/";
+builder.Services.AddPhotosFeature(immichBaseUrl);
+
 builder.Services.AddIdentityCore<AppUser>(options =>
     {
         // No email flow: an admin creates accounts directly via the admin UI (Phase 3), so there's
@@ -215,6 +223,36 @@ await using (var scope = app.Services.CreateAsyncScope())
             });
             await db.SaveChangesAsync();
             app.Logger.LogInformation("Provisioned managed Radicale account and family for {UserName}.", seedUserName);
+
+            // Immich needs a live, already-booted instance to provision against (unlike Radicale's pure
+            // file write above), so this is best-effort and non-fatal: a slow/unreachable Immich must
+            // never stop FamilyCloud itself from starting. Photos.ProvisionImmich=false lets test hosts
+            // (WebApplicationFactory, no real Immich container) skip this entirely instead of eating the
+            // provisioner's retry delay on every boot.
+            if (app.Configuration.GetValue<bool?>("Photos:ProvisionImmich") ?? true)
+            {
+                try
+                {
+                    var immichProvisioner = scope.ServiceProvider.GetRequiredService<IImmichProvisioner>();
+                    var immichApiKey = await immichProvisioner.ProvisionAsync($"{seedUserName}@familycloud.local", seedPassword);
+
+                    var immichCredentialProtector = scope.ServiceProvider.GetRequiredService<IImmichCredentialProtector>();
+                    db.Set<ImmichAccount>().Add(new ImmichAccount
+                    {
+                        EncryptedApiKey = immichCredentialProtector.Encrypt(immichApiKey),
+                        ImmichUserId = $"{seedUserName}@familycloud.local",
+                        ProvisionedUtc = DateTimeOffset.UtcNow,
+                    });
+                    await db.SaveChangesAsync();
+                    app.Logger.LogInformation("Provisioned Immich service account.");
+                }
+                catch (Exception ex)
+                {
+                    app.Logger.LogWarning(ex,
+                        "Could not provision the Immich service account — the Photos feature will be unavailable " +
+                        "until this succeeds on a later restart (retried automatically since no ImmichAccount row exists yet).");
+                }
+            }
         }
         else
         {
@@ -252,6 +290,7 @@ app.MapAccountEndpoints();
 app.MapFamilyEndpoints();
 app.MapCalendarEndpoints();
 app.MapListsEndpoints();
+app.MapPhotosEndpoints();
 app.MapSettingsEndpoints();
 app.MapSyncEndpoints();
 

@@ -1,12 +1,19 @@
+using System.Net.Http.Json;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.TestHost;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+using FamilyCloud.Contracts.Auth;
+using FamilyCloud.Photos.Immich;
 
-namespace FamilyCloud.Server.Tests;
+namespace FamilyCloud.Photos.Tests;
 
 /// <summary>
-/// Boots the real Program.cs pipeline (migrations, seed admin, Radicale provisioning included)
-/// against an isolated SQLite file + data directory per factory instance, so tests exercise the
-/// actual startup/auth/API wiring rather than a hand-assembled substitute host.
+/// Boots the real Program.cs pipeline (migrations, seed admin/family included) against an isolated
+/// SQLite file + data directory per factory instance. Mirrors FamilyCloud.Lists.Tests' copy of the same
+/// factory, plus swaps the real <see cref="IImmichClient"/> for <see cref="FakeImmichClient"/> since
+/// tests run with no live Immich instance (see Photos:ProvisionImmich=false below).
 /// </summary>
 public sealed class FamilyCloudWebApplicationFactory : WebApplicationFactory<Program>
 {
@@ -15,16 +22,13 @@ public sealed class FamilyCloudWebApplicationFactory : WebApplicationFactory<Pro
     public string SeedAdminPassword { get; } = "Sup3r-Secret-Test-Password!";
 
     private readonly string dataDirectory =
-        Path.Combine(Path.GetTempPath(), "familycloud-server-tests", Guid.NewGuid().ToString("N"));
+        Path.Combine(Path.GetTempPath(), "familycloud-photos-tests", Guid.NewGuid().ToString("N"));
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         Directory.CreateDirectory(dataDirectory);
 
         builder.UseEnvironment("Development");
-        // SQLite (not the production PostgreSQL provider) — keeps integration tests fast and
-        // self-contained without requiring a live Postgres server for `dotnet test` to pass. See
-        // Program.cs's Database:Provider switch and the Phase 1 architecture roadmap for why.
         builder.UseSetting("Database:Provider", "Sqlite");
         builder.UseSetting("ConnectionStrings:DefaultConnection", $"Data Source={Path.Combine(dataDirectory, "familycloud.db")}");
         builder.UseSetting("Jwt:SigningKey", "test-only-signing-key-at-least-32-characters-long");
@@ -32,9 +36,24 @@ public sealed class FamilyCloudWebApplicationFactory : WebApplicationFactory<Pro
         builder.UseSetting("SeedAdmin:Password", SeedAdminPassword);
         builder.UseSetting("Radicale:HtpasswdPath", Path.Combine(dataDirectory, "radicale-htpasswd", "users"));
         builder.UseSetting("Radicale:BaseUrl", "http://localhost:5232/");
-        // No live Immich instance in tests — Immich provisioning needs actual network round-trips
-        // (unlike Radicale's pure file write above), so skip it here rather than eating its retry delay.
         builder.UseSetting("Photos:ProvisionImmich", "false");
+
+        builder.ConfigureTestServices(services =>
+        {
+            services.RemoveAll<IImmichClient>();
+            services.AddSingleton<IImmichClient, FakeImmichClient>();
+        });
+    }
+
+    public async Task<HttpClient> CreateAuthenticatedClientAsync(string? userName = null, string? password = null)
+    {
+        var client = CreateClient();
+        var response = await client.PostAsJsonAsync(
+            "/api/auth/login", new LoginRequest(userName ?? SeedAdminUserName, password ?? SeedAdminPassword));
+        response.EnsureSuccessStatusCode();
+        var body = await response.Content.ReadFromJsonAsync<LoginResponse>();
+        client.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", body!.Token);
+        return client;
     }
 
     protected override void Dispose(bool disposing)

@@ -1,0 +1,36 @@
+@* Card grid over the caller's PhotoAlbums. Host owns loading/creation/deletion — this component only
+   renders and raises callbacks (mirrors ListsOverview). *@
+
+@if (Albums.Count == 0)
+{
+    <MudAlert Severity="Severity.Info">Noch keine Alben vorhanden.</MudAlert>
+}
+else
+{
+    <MudGrid>
+        @foreach (var album in Albums)
+        {
+            <MudItem xs="12" sm="6">
+                <MudPaper Class="pa-4 d-flex align-center" Elevation="2" Style="cursor:pointer;" @onclick="() => OnAlbumClick.InvokeAsync(album)">
+                    <MudIcon Icon="@Icons.Material.Filled.PhotoAlbum" Class="mr-3" Color="Color.Primary" />
+                    <div class="flex-grow-1">
+                        <MudText Typo="Typo.h6">@album.Name</MudText>
+                    </div>
+                    @if (album.CanWrite)
+                    {
+                        <div @onclick:stopPropagation="true">
+                            <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error"
+                                           OnClick="@((MouseEventArgs e) => OnDeleteClick.InvokeAsync(album))" />
+                        </div>
+                    }
+                </MudPaper>
+            </MudItem>
+        }
+    </MudGrid>
+}
+
+@code {
+    [Parameter] public IReadOnlyList<PhotoAlbumDto> Albums { get; set; } = [];
+    [Parameter] public EventCallback<PhotoAlbumDto> OnAlbumClick { get; set; }
+    [Parameter] public EventCallback<PhotoAlbumDto> OnDeleteClick { get; set; }
+}

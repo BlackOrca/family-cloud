@@ -62,6 +62,63 @@ services:
     networks:
       - "aspire"
     restart: "unless-stopped"
+  immich-postgres:
+    image: "ghcr.io/immich-app/postgres:14-vectorchord0.4.3-pgvectors0.2.0"
+    environment:
+      POSTGRES_HOST_AUTH_METHOD: "scram-sha-256"
+      POSTGRES_INITDB_ARGS: "--auth-host=scram-sha-256 --auth-local=scram-sha-256"
+      POSTGRES_USER: "postgres"
+      POSTGRES_PASSWORD: "${IMMICH_POSTGRES_PASSWORD}"
+      POSTGRES_DB: "immich"
+    expose:
+      - "5432"
+    volumes:
+      - type: "bind"
+        target: "/var/lib/postgresql/data"
+        source: "./data/immich-postgres"
+    networks:
+      - "aspire"
+    restart: "unless-stopped"
+  immich-redis:
+    image: "docker.io/valkey/valkey:9"
+    networks:
+      - "aspire"
+    restart: "unless-stopped"
+  immich-machine-learning:
+    image: "ghcr.io/immich-app/immich-machine-learning:release"
+    volumes:
+      - type: "bind"
+        target: "/cache"
+        source: "./data/immich-model-cache"
+    networks:
+      - "aspire"
+    restart: "unless-stopped"
+  immich-server:
+    image: "ghcr.io/immich-app/immich-server:release"
+    environment:
+      DB_HOSTNAME: "immich-postgres"
+      DB_USERNAME: "postgres"
+      DB_PASSWORD: "${IMMICH_POSTGRES_PASSWORD}"
+      DB_DATABASE_NAME: "immich"
+      REDIS_HOSTNAME: "immich-redis"
+      TZ: "Europe/Berlin"
+      IMMICH_MACHINE_LEARNING_URL: "http://immich-machine-learning:3003"
+    expose:
+      - "2283"
+    volumes:
+      - type: "bind"
+        target: "/data"
+        source: "./data/immich-uploads"
+    depends_on:
+      immich-postgres:
+        condition: "service_started"
+      immich-redis:
+        condition: "service_started"
+      immich-machine-learning:
+        condition: "service_started"
+    networks:
+      - "aspire"
+    restart: "unless-stopped"
   server:
     image: "${SERVER_IMAGE}"
     environment:
@@ -82,6 +139,7 @@ services:
       SeedAdmin__Password: "${SEED_ADMIN_PASSWORD}"
       Radicale__BaseUrl: "http://radicale:5232/"
       Radicale__HtpasswdPath: "/radicale-auth/users"
+      Immich__BaseUrl: "http://immich-server:2283/"
       OTEL_EXPORTER_OTLP_ENDPOINT: "http://familycloud-dashboard:18889"
       OTEL_EXPORTER_OTLP_PROTOCOL: "grpc"
       OTEL_SERVICE_NAME: "server"
@@ -98,6 +156,8 @@ services:
         source: "./data/radicale-auth"
     depends_on:
       radicale:
+        condition: "service_started"
+      immich-server:
         condition: "service_started"
       postgres:
         condition: "service_started"

@@ -1,0 +1,183 @@
+@page "/photos/{AlbumId:guid}"
+@implements IDisposable
+
+@if (_isLoading)
+{
+    <MudContainer MaxWidth="MaxWidth.Small" Class="mt-8 d-flex justify-center">
+        <MudProgressCircular Indeterminate="true" />
+    </MudContainer>
+}
+else if (_album is null)
+{
+    <MudContainer MaxWidth="MaxWidth.Small" Class="mt-4">
+        <MudAlert Severity="Severity.Warning">Album wurde nicht gefunden — evtl. bereits gelöscht.</MudAlert>
+    </MudContainer>
+}
+else
+{
+    <MudContainer MaxWidth="MaxWidth.Small" Class="mt-4">
+        <div class="d-flex align-center mb-4">
+            <MudIconButton Icon="@Icons.Material.Filled.ArrowBack" OnClick="@(() => Nav.NavigateTo("/photos"))" />
+            <MudText Typo="Typo.h5" Class="ml-2 flex-grow-1">@_album.Name</MudText>
+            @if (_album.CanWrite)
+            {
+                <MudIconButton Icon="@Icons.Material.Filled.PersonAdd" OnClick="OpenShareDialogAsync" />
+            }
+        </div>
+
+        @if (_loadError is not null)
+        {
+            <MudAlert Severity="Severity.Error" Class="mb-2">
+                @_loadError
+                <MudButton Variant="Variant.Text" Color="Color.Inherit" Class="ml-2" OnClick="LoadAssetsAsync">Erneut versuchen</MudButton>
+            </MudAlert>
+        }
+        else
+        {
+            <PhotoGridView PhotoAssets="_assets" CanWrite="_album.CanWrite"
+                            LoadThumbnailDataUriAsync="LoadThumbnailDataUriAsync" OnDelete="DeleteAssetAsync" OnUpload="UploadAssetAsync" />
+        }
+    </MudContainer>
+}
+
+@code {
+    [Parameter] public Guid AlbumId { get; set; }
+
+    [Inject] private ApiClient Api { get; set; } = default!;
+    [Inject] private SyncCoordinator Sync { get; set; } = default!;
+    [Inject] private NavigationManager Nav { get; set; } = default!;
+    [Inject] private IDialogService DialogService { get; set; } = default!;
+    [Inject] private ISnackbar Snackbar { get; set; } = default!;
+
+    private const string ServerUnreachableMessage = "Server nicht erreichbar. Bitte später erneut versuchen.";
+
+    private bool _isLoading = true;
+    private PhotoAlbumDto? _album;
+    private List<PhotoAssetDto> _assets = [];
+    private string? _loadError;
+    private IDisposable? _albumSub;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _albumSub = Sync.Subscribe(SyncResourceType.Photo, OnAlbumChangedAsync);
+
+        try
+        {
+            // No single-album GET endpoint exists (only the caller's full album list and per-album
+            // assets) — fine at household scale, so this just filters the full set instead of adding
+            // one. Same simplification as ListDetail.
+            var albums = await Api.GetPhotoAlbumsAsync();
+            _album = albums.FirstOrDefault(a => a.Id == AlbumId);
+            if (_album is not null)
+            {
+                _assets = await Api.GetPhotoAlbumAssetsAsync(AlbumId);
+            }
+        }
+        catch (Exception)
+        {
+            _loadError = ServerUnreachableMessage;
+        }
+
+        _isLoading = false;
+    }
+
+    private async Task LoadAssetsAsync()
+    {
+        try
+        {
+            _loadError = null;
+            _assets = await Api.GetPhotoAlbumAssetsAsync(AlbumId);
+        }
+        catch (Exception)
+        {
+            _loadError = ServerUnreachableMessage;
+        }
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task OnAlbumChangedAsync(string? resourceId)
+    {
+        if (_isLoading || (resourceId is not null && resourceId != AlbumId.ToString()))
+        {
+            return;
+        }
+        await LoadAssetsAsync();
+    }
+
+    private async Task<string?> LoadThumbnailDataUriAsync(PhotoAssetDto asset)
+    {
+        try
+        {
+            var thumbnail = await Api.GetPhotoThumbnailAsync(AlbumId, asset.Id);
+            if (thumbnail is null)
+            {
+                return null;
+            }
+            return $"data:{thumbnail.Value.ContentType};base64,{Convert.ToBase64String(thumbnail.Value.Bytes)}";
+        }
+        catch (Exception)
+        {
+            return null;
+        }
+    }
+
+    private async Task DeleteAssetAsync(PhotoAssetDto asset)
+    {
+        try
+        {
+            await Api.DeletePhotoAssetAsync(AlbumId, asset.Id);
+            await LoadAssetsAsync();
+        }
+        catch (Exception)
+        {
+            Snackbar.Add(ServerUnreachableMessage, Severity.Error);
+        }
+    }
+
+    private async Task UploadAssetAsync(IBrowserFile file)
+    {
+        try
+        {
+            // 50 MB cap — well above a typical phone photo, just a sane upper bound so a stray large
+            // video can't silently blow up server memory (see IBrowserFile.OpenReadStream's own
+            // maxAllowedSize parameter, which throws past this rather than truncating).
+            await using var stream = file.OpenReadStream(maxAllowedSize: 50 * 1024 * 1024);
+            var uploaded = await Api.UploadPhotoAssetAsync(AlbumId, file.Name, stream, file.ContentType);
+            if (uploaded is null)
+            {
+                Snackbar.Add("Foto konnte nicht hochgeladen werden.", Severity.Error);
+                return;
+            }
+            await LoadAssetsAsync();
+        }
+        catch (Exception)
+        {
+            Snackbar.Add(ServerUnreachableMessage, Severity.Error);
+        }
+    }
+
+    private async Task OpenShareDialogAsync()
+    {
+        List<FamilyMemberDto> members;
+        try
+        {
+            members = await Api.GetFamilyMembersAsync();
+        }
+        catch (Exception)
+        {
+            Snackbar.Add(ServerUnreachableMessage, Severity.Error);
+            return;
+        }
+
+        var parameters = new DialogParameters<ShareAlbumDialog>
+        {
+            { x => x.FamilyMembers, members },
+            { x => x.LoadSharesAsync, () => Api.GetPhotoAlbumSharesAsync(AlbumId) },
+            { x => x.OnGrantAsync, (Guid userId, bool canWrite) => Api.SharePhotoAlbumAsync(AlbumId, userId, canWrite) },
+            { x => x.OnRevokeAsync, (Guid userId) => Api.RevokePhotoAlbumShareAsync(AlbumId, userId) },
+        };
+        await DialogService.ShowAsync<ShareAlbumDialog>("Album teilen", parameters);
+    }
+
+    public void Dispose() => _albumSub?.Dispose();
+}

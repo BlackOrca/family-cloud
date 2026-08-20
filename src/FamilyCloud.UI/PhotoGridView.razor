@@ -1,0 +1,69 @@
+@* Thumbnail grid for one PhotoAlbum, plus an upload control. Host owns loading/writes and the actual
+   HTTP calls — this component only renders and raises callbacks (mirrors ListItemsView's split).
+   Thumbnails are never linked to directly (no <img src> pointing at the API): the API is JWT-bearer
+   authenticated and a plain <img> tag can't carry that header, so the host fetches each thumbnail's
+   bytes via ApiClient and hands back a data: URI through LoadThumbnailDataUriAsync — see PhotoAlbumDetail. *@
+
+@if (PhotoAssets.Count == 0)
+{
+    <MudAlert Severity="Severity.Info" Class="mb-3">Noch keine Fotos vorhanden.</MudAlert>
+}
+else
+{
+    <MudGrid Class="mb-3">
+        @foreach (var asset in PhotoAssets)
+        {
+            <MudItem xs="4" sm="3" md="2">
+                <MudPaper Class="pa-1" Elevation="1" Style="position:relative;">
+                    @if (_thumbnails.TryGetValue(asset.Id, out var dataUri))
+                    {
+                        <img src="@dataUri" alt="@asset.OriginalFileName"
+                             style="width:100%; aspect-ratio:1; object-fit:cover; border-radius:4px; display:block;" />
+                    }
+                    else
+                    {
+                        <div style="width:100%; aspect-ratio:1; display:flex; align-items:center; justify-content:center;">
+                            <MudProgressCircular Indeterminate="true" Size="Size.Small" />
+                        </div>
+                    }
+                    @if (CanWrite)
+                    {
+                        <div @onclick:stopPropagation="true" style="position:absolute; top:0; right:0;">
+                            <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error"
+                                           OnClick="@(() => OnDelete.InvokeAsync(asset))" />
+                        </div>
+                    }
+                </MudPaper>
+            </MudItem>
+        }
+    </MudGrid>
+}
+
+@if (CanWrite)
+{
+    <InputFile OnChange="OnFileChangedAsync" accept="image/*" />
+}
+
+@code {
+    [Parameter] public IReadOnlyList<PhotoAssetDto> PhotoAssets { get; set; } = [];
+    [Parameter] public bool CanWrite { get; set; }
+    [Parameter] public Func<PhotoAssetDto, Task<string?>> LoadThumbnailDataUriAsync { get; set; } = default!;
+    [Parameter] public EventCallback<PhotoAssetDto> OnDelete { get; set; }
+    [Parameter] public EventCallback<IBrowserFile> OnUpload { get; set; }
+
+    private readonly Dictionary<string, string> _thumbnails = [];
+
+    protected override async Task OnParametersSetAsync()
+    {
+        foreach (var asset in PhotoAssets.Where(a => !_thumbnails.ContainsKey(a.Id)))
+        {
+            var dataUri = await LoadThumbnailDataUriAsync(asset);
+            if (dataUri is not null)
+            {
+                _thumbnails[asset.Id] = dataUri;
+            }
+        }
+    }
+
+    private async Task OnFileChangedAsync(InputFileChangeEventArgs e) => await OnUpload.InvokeAsync(e.File);
+}
