@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using FamilyCloud.Contracts.Lists;
 using FamilyCloud.Contracts.Sync;
 using FamilyCloud.Core.Auth;
+using FamilyCloud.Core.Data;
 using FamilyCloud.Core.Sync;
 using FamilyCloud.Lists.Domain;
 
@@ -185,6 +186,24 @@ public static class ListsEndpoints
             syncEvents.Publish(SyncResourceType.List, item.ItemListId.ToString());
             await db.SaveChangesAsync();
             return Results.NoContent();
+        });
+
+        group.MapGet("/{listId:guid}/share", async (Guid listId, HttpContext http, DbContext db) =>
+        {
+            var userId = http.User.GetUserId();
+            var hasAccess = await db.Set<ListPermission>().AnyAsync(p => p.UserId == userId && p.ItemListId == listId);
+            if (!hasAccess)
+            {
+                return Results.Forbid(authenticationSchemes: [JwtBearerDefaults.AuthenticationScheme]);
+            }
+
+            var shares = await (
+                from p in db.Set<ListPermission>()
+                join u in db.Set<AppUser>() on p.UserId equals u.Id
+                where p.ItemListId == listId
+                select new ListShareDto(u.Id, u.DisplayName, p.CanWrite)
+            ).ToListAsync();
+            return Results.Ok(shares);
         });
 
         // Sharing: grants/updates another family member's access. Gated on the caller already having

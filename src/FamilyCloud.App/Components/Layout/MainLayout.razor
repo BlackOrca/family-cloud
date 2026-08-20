@@ -22,6 +22,9 @@
                 <MudNavLink Href="/" Match="NavLinkMatch.All" Icon="@Icons.Material.Filled.CalendarMonth" OnClick="@(() => _drawerOpen = false)">
                     Kalender
                 </MudNavLink>
+                <MudNavLink Href="/lists" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Checklist" OnClick="@(() => _drawerOpen = false)">
+                    Listen
+                </MudNavLink>
                 <MudNavLink Href="/account" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.AccountCircle" OnClick="@(() => _drawerOpen = false)">
                     Account
                 </MudNavLink>

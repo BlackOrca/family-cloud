@@ -116,11 +116,19 @@ public class ListsEndpointsTests(FamilyCloudWebApplicationFactory factory) : ICl
             $"/api/lists/{list.Id}/items", new ListItemWriteRequest("Milch", "2L", IsDone: false));
         Assert.Equal(HttpStatusCode.Created, addResponse.StatusCode);
 
+        var sharesResponse = await owner.GetAsync($"/api/lists/{list.Id}/share");
+        Assert.Equal(HttpStatusCode.OK, sharesResponse.StatusCode);
+        var shares = await sharesResponse.Content.ReadFromJsonAsync<List<ListShareDto>>();
+        Assert.Contains(shares!, s => s.UserId == memberUserId && s.CanWrite);
+
         var revokeResponse = await owner.DeleteAsync($"/api/lists/{list.Id}/share/{memberUserId}");
         Assert.Equal(HttpStatusCode.NoContent, revokeResponse.StatusCode);
 
         var afterRevokeResponse = await sharee.GetAsync($"/api/lists/{list.Id}/items");
         Assert.Equal(HttpStatusCode.Forbidden, afterRevokeResponse.StatusCode);
+
+        var sharesAfterRevoke = await (await owner.GetAsync($"/api/lists/{list.Id}/share")).Content.ReadFromJsonAsync<List<ListShareDto>>();
+        Assert.DoesNotContain(sharesAfterRevoke!, s => s.UserId == memberUserId);
     }
 
     [Fact]

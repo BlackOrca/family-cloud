@@ -1,0 +1,94 @@
+@* Manages who else in the family can see/write one ItemList. Unlike the other dialogs here, grants
+   and revokes apply immediately (each is its own request) rather than being collected and applied
+   once on "Save" — sharing a resource with several people in one sitting reads more naturally as a
+   live management panel than a form. Host (a page in FamilyCloud.App) owns the actual HTTP calls;
+   this component only orchestrates them via the delegate parameters below, since FamilyCloud.UI
+   can't depend on FamilyCloud.App's internal ApiClient. *@
+
+<MudDialog>
+    <DialogContent>
+        @if (_shares is null)
+        {
+            <MudProgressCircular Indeterminate="true" />
+        }
+        else
+        {
+            @if (_shares.Count > 0)
+            {
+                <MudList T="Guid" Class="mb-3">
+                    @foreach (var share in _shares)
+                    {
+                        <MudListItem T="Guid">
+                            <div class="d-flex align-center">
+                                <div class="flex-grow-1">@share.DisplayName</div>
+                                <MudSwitch T="bool" Value="share.CanWrite" Color="Color.Primary" Label="Schreiben"
+                                           ValueChanged="@(canWrite => GrantAsync(share.UserId, canWrite))" Disabled="_busy" />
+                                <MudIconButton Icon="@Icons.Material.Filled.PersonRemove" Color="Color.Error" Disabled="_busy"
+                                               OnClick="@(() => RevokeAsync(share.UserId))" />
+                            </div>
+                        </MudListItem>
+                    }
+                </MudList>
+            }
+
+            @if (AddableMembers.Count > 0)
+            {
+                <div class="d-flex align-center" style="gap:8px;">
+                    <MudSelect T="Guid" Label="Familienmitglied hinzufügen" @bind-Value="_selectedUserId" Class="flex-grow-1">
+                        @foreach (var member in AddableMembers)
+                        {
+                            <MudSelectItem T="Guid" Value="member.UserId">@member.DisplayName</MudSelectItem>
+                        }
+                    </MudSelect>
+                    <MudIconButton Icon="@Icons.Material.Filled.PersonAdd" Color="Color.Primary" Disabled="@(_busy || _selectedUserId == Guid.Empty)"
+                                   OnClick="@(() => GrantAsync(_selectedUserId, canWrite: true))" />
+                </div>
+            }
+        }
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Close">Fertig</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private IMudDialogInstance MudDialog { get; set; } = default!;
+
+    [Parameter] public IReadOnlyList<FamilyMemberDto> FamilyMembers { get; set; } = [];
+    [Parameter] public Func<Task<List<ListShareDto>>> LoadSharesAsync { get; set; } = default!;
+    [Parameter] public Func<Guid, bool, Task> OnGrantAsync { get; set; } = default!;
+    [Parameter] public Func<Guid, Task> OnRevokeAsync { get; set; } = default!;
+
+    private List<ListShareDto>? _shares;
+    private Guid _selectedUserId;
+    private bool _busy;
+
+    private IReadOnlyList<FamilyMemberDto> AddableMembers =>
+        FamilyMembers.Where(m => _shares is not null && _shares.All(s => s.UserId != m.UserId)).ToList();
+
+    protected override async Task OnInitializedAsync() => await RefreshAsync();
+
+    private async Task RefreshAsync()
+    {
+        _shares = await LoadSharesAsync();
+        _selectedUserId = AddableMembers.FirstOrDefault()?.UserId ?? Guid.Empty;
+    }
+
+    private async Task GrantAsync(Guid userId, bool canWrite)
+    {
+        _busy = true;
+        await OnGrantAsync(userId, canWrite);
+        await RefreshAsync();
+        _busy = false;
+    }
+
+    private async Task RevokeAsync(Guid userId)
+    {
+        _busy = true;
+        await OnRevokeAsync(userId);
+        await RefreshAsync();
+        _busy = false;
+    }
+
+    private void Close() => MudDialog.Close();
+}

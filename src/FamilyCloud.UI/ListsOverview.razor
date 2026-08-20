@@ -1,0 +1,49 @@
+@* Card grid over the caller's ItemLists. Host owns loading/creation/deletion — this component only
+   renders and raises callbacks. *@
+
+@if (Lists.Count == 0)
+{
+    <MudAlert Severity="Severity.Info">Noch keine Listen vorhanden.</MudAlert>
+}
+else
+{
+    <MudGrid>
+        @foreach (var list in Lists)
+        {
+            <MudItem xs="12" sm="6">
+                <MudPaper Class="pa-4 d-flex align-center" Elevation="2" Style="cursor:pointer;" @onclick="() => OnListClick.InvokeAsync(list)">
+                    <MudIcon Icon="@KindIcon(list.Kind)" Class="mr-3" Color="Color.Primary" />
+                    <div class="flex-grow-1">
+                        <MudText Typo="Typo.h6">@list.Name</MudText>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">@KindLabel(list.Kind)</MudText>
+                    </div>
+                    @if (list.CanWrite)
+                    {
+                        <div @onclick:stopPropagation="true">
+                            <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error"
+                                           OnClick="@((MouseEventArgs e) => OnDeleteClick.InvokeAsync(list))" />
+                        </div>
+                    }
+                </MudPaper>
+            </MudItem>
+        }
+    </MudGrid>
+}
+
+@code {
+    [Parameter] public IReadOnlyList<ItemListDto> Lists { get; set; } = [];
+    [Parameter] public EventCallback<ItemListDto> OnListClick { get; set; }
+    [Parameter] public EventCallback<ItemListDto> OnDeleteClick { get; set; }
+
+    private static string KindIcon(string kind) => kind switch
+    {
+        "Shopping" => Icons.Material.Filled.ShoppingCart,
+        _ => Icons.Material.Filled.Checklist,
+    };
+
+    private static string KindLabel(string kind) => kind switch
+    {
+        "Shopping" => "Einkaufsliste",
+        _ => "Todo-Liste",
+    };
+}

@@ -1,0 +1,114 @@
+@page "/lists"
+@implements IDisposable
+
+@if (_isLoading)
+{
+    <MudContainer MaxWidth="MaxWidth.Small" Class="mt-8 d-flex justify-center">
+        <MudProgressCircular Indeterminate="true" />
+    </MudContainer>
+}
+else
+{
+    <MudContainer MaxWidth="MaxWidth.Small" Class="mt-4">
+        @if (_loadError is not null)
+        {
+            <MudAlert Severity="Severity.Error" Class="mb-2">
+                @_loadError
+                <MudButton Variant="Variant.Text" Color="Color.Inherit" Class="ml-2" OnClick="LoadListsAsync">Erneut versuchen</MudButton>
+            </MudAlert>
+        }
+        else
+        {
+            <ListsOverview Lists="_lists" OnListClick="OpenList" OnDeleteClick="DeleteListAsync" />
+        }
+    </MudContainer>
+
+    <div style="position:fixed; bottom:24px; right:24px;">
+        <MudFab Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="OpenCreateDialogAsync" />
+    </div>
+}
+
+@code {
+    [Inject] private ApiClient Api { get; set; } = default!;
+    [Inject] private SyncCoordinator Sync { get; set; } = default!;
+    [Inject] private NavigationManager Nav { get; set; } = default!;
+    [Inject] private IDialogService DialogService { get; set; } = default!;
+    [Inject] private ISnackbar Snackbar { get; set; } = default!;
+
+    private const string ServerUnreachableMessage = "Server nicht erreichbar. Bitte später erneut versuchen.";
+
+    private bool _isLoading = true;
+    private List<ItemListDto> _lists = [];
+    private string? _loadError;
+    private IDisposable? _listSub;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _listSub = Sync.Subscribe(SyncResourceType.List, _ => LoadListsAsync());
+        await LoadListsAsync();
+        _isLoading = false;
+    }
+
+    private async Task LoadListsAsync()
+    {
+        try
+        {
+            _loadError = null;
+            _lists = await Api.GetListsAsync();
+        }
+        catch (Exception)
+        {
+            _loadError = ServerUnreachableMessage;
+        }
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private void OpenList(ItemListDto list) => Nav.NavigateTo($"/lists/{list.Id}");
+
+    private async Task OpenCreateDialogAsync()
+    {
+        var dialog = await DialogService.ShowAsync<CreateListDialog>("Neue Liste");
+        var result = await dialog.Result;
+        if (result is null || result.Canceled || result.Data is not CreateListDialog.InputModel input)
+        {
+            return;
+        }
+
+        try
+        {
+            var created = await Api.CreateListAsync(input.Name, input.Kind);
+            if (created is null)
+            {
+                Snackbar.Add("Liste konnte nicht erstellt werden.", Severity.Error);
+                return;
+            }
+            await LoadListsAsync();
+        }
+        catch (Exception)
+        {
+            Snackbar.Add(ServerUnreachableMessage, Severity.Error);
+        }
+    }
+
+    private async Task DeleteListAsync(ItemListDto list)
+    {
+        var confirmed = await DialogService.ShowMessageBoxAsync(
+            "Liste löschen", $"'{list.Name}' wirklich löschen? Alle Einträge gehen dabei verloren.", yesText: "Löschen", cancelText: "Abbrechen");
+        if (confirmed != true)
+        {
+            return;
+        }
+
+        try
+        {
+            await Api.DeleteListAsync(list.Id);
+            await LoadListsAsync();
+        }
+        catch (Exception)
+        {
+            Snackbar.Add(ServerUnreachableMessage, Severity.Error);
+        }
+    }
+
+    public void Dispose() => _listSub?.Dispose();
+}

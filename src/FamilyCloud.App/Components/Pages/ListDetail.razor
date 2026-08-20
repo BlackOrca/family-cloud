@@ -1,0 +1,169 @@
+@page "/lists/{ListId:guid}"
+@implements IDisposable
+
+@if (_isLoading)
+{
+    <MudContainer MaxWidth="MaxWidth.Small" Class="mt-8 d-flex justify-center">
+        <MudProgressCircular Indeterminate="true" />
+    </MudContainer>
+}
+else if (_list is null)
+{
+    <MudContainer MaxWidth="MaxWidth.Small" Class="mt-4">
+        <MudAlert Severity="Severity.Warning">Liste wurde nicht gefunden — evtl. bereits gelöscht.</MudAlert>
+    </MudContainer>
+}
+else
+{
+    <MudContainer MaxWidth="MaxWidth.Small" Class="mt-4">
+        <div class="d-flex align-center mb-4">
+            <MudIconButton Icon="@Icons.Material.Filled.ArrowBack" OnClick="@(() => Nav.NavigateTo("/lists"))" />
+            <MudText Typo="Typo.h5" Class="ml-2 flex-grow-1">@_list.Name</MudText>
+            @if (_list.CanWrite)
+            {
+                <MudIconButton Icon="@Icons.Material.Filled.PersonAdd" OnClick="OpenShareDialogAsync" />
+            }
+        </div>
+
+        @if (_loadError is not null)
+        {
+            <MudAlert Severity="Severity.Error" Class="mb-2">
+                @_loadError
+                <MudButton Variant="Variant.Text" Color="Color.Inherit" Class="ml-2" OnClick="LoadItemsAsync">Erneut versuchen</MudButton>
+            </MudAlert>
+        }
+        else
+        {
+            <ListItemsView Items="_items" CanWrite="_list.CanWrite" ShowQuantity="@(_list.Kind == "Shopping")"
+                            OnToggle="ToggleItemAsync" OnDelete="DeleteItemAsync" OnAdd="AddItemAsync" />
+        }
+    </MudContainer>
+}
+
+@code {
+    [Parameter] public Guid ListId { get; set; }
+
+    [Inject] private ApiClient Api { get; set; } = default!;
+    [Inject] private SyncCoordinator Sync { get; set; } = default!;
+    [Inject] private NavigationManager Nav { get; set; } = default!;
+    [Inject] private IDialogService DialogService { get; set; } = default!;
+    [Inject] private ISnackbar Snackbar { get; set; } = default!;
+
+    private const string ServerUnreachableMessage = "Server nicht erreichbar. Bitte später erneut versuchen.";
+
+    private bool _isLoading = true;
+    private ItemListDto? _list;
+    private List<ListItemDto> _items = [];
+    private string? _loadError;
+    private IDisposable? _listSub;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _listSub = Sync.Subscribe(SyncResourceType.List, OnListChangedAsync);
+
+        try
+        {
+            // No single-list GET endpoint exists (only the caller's full list and per-list items) —
+            // fine at household scale, so this just filters the full set instead of adding one.
+            var lists = await Api.GetListsAsync();
+            _list = lists.FirstOrDefault(l => l.Id == ListId);
+            if (_list is not null)
+            {
+                _items = await Api.GetListItemsAsync(ListId);
+            }
+        }
+        catch (Exception)
+        {
+            _loadError = ServerUnreachableMessage;
+        }
+
+        _isLoading = false;
+    }
+
+    private async Task LoadItemsAsync()
+    {
+        try
+        {
+            _loadError = null;
+            _items = await Api.GetListItemsAsync(ListId);
+        }
+        catch (Exception)
+        {
+            _loadError = ServerUnreachableMessage;
+        }
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task OnListChangedAsync(string? resourceId)
+    {
+        if (_isLoading || (resourceId is not null && resourceId != ListId.ToString()))
+        {
+            return;
+        }
+        await LoadItemsAsync();
+    }
+
+    private async Task ToggleItemAsync(ListItemDto item)
+    {
+        try
+        {
+            await Api.UpdateListItemAsync(item.Id, item.Text, item.Quantity, item.IsDone);
+            await LoadItemsAsync();
+        }
+        catch (Exception)
+        {
+            Snackbar.Add(ServerUnreachableMessage, Severity.Error);
+        }
+    }
+
+    private async Task DeleteItemAsync(ListItemDto item)
+    {
+        try
+        {
+            await Api.DeleteListItemAsync(item.Id);
+            await LoadItemsAsync();
+        }
+        catch (Exception)
+        {
+            Snackbar.Add(ServerUnreachableMessage, Severity.Error);
+        }
+    }
+
+    private async Task AddItemAsync((string Text, string? Quantity) input)
+    {
+        try
+        {
+            await Api.CreateListItemAsync(ListId, input.Text, input.Quantity);
+            await LoadItemsAsync();
+        }
+        catch (Exception)
+        {
+            Snackbar.Add(ServerUnreachableMessage, Severity.Error);
+        }
+    }
+
+    private async Task OpenShareDialogAsync()
+    {
+        List<FamilyMemberDto> members;
+        try
+        {
+            members = await Api.GetFamilyMembersAsync();
+        }
+        catch (Exception)
+        {
+            Snackbar.Add(ServerUnreachableMessage, Severity.Error);
+            return;
+        }
+
+        var parameters = new DialogParameters<ShareListDialog>
+        {
+            { x => x.FamilyMembers, members },
+            { x => x.LoadSharesAsync, () => Api.GetListSharesAsync(ListId) },
+            { x => x.OnGrantAsync, (Guid userId, bool canWrite) => Api.ShareListAsync(ListId, userId, canWrite) },
+            { x => x.OnRevokeAsync, (Guid userId) => Api.RevokeListShareAsync(ListId, userId) },
+        };
+        await DialogService.ShowAsync<ShareListDialog>("Liste teilen", parameters);
+    }
+
+    public void Dispose() => _listSub?.Dispose();
+}

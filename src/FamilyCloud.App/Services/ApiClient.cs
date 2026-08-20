@@ -3,6 +3,8 @@ using System.Net.Http.Json;
 using FamilyCloud.Contracts.Account;
 using FamilyCloud.Contracts.Auth;
 using FamilyCloud.Contracts.Calendars;
+using FamilyCloud.Contracts.Families;
+using FamilyCloud.Contracts.Lists;
 using FamilyCloud.Contracts.Settings;
 using FamilyCloud.Contracts.Sync;
 
@@ -94,6 +96,72 @@ internal sealed class ApiClient(HttpClient http)
         return response.StatusCode == HttpStatusCode.NoContent
             ? new EventWriteResult(EventWriteOutcome.Success)
             : await ToWriteResultAsync(response, ct);
+    }
+
+    public async Task<List<FamilyMemberDto>> GetFamilyMembersAsync(CancellationToken ct = default)
+    {
+        var members = await http.GetFromJsonAsync<List<FamilyMemberDto>>("api/family/members", ct);
+        return members ?? [];
+    }
+
+    public async Task<List<ItemListDto>> GetListsAsync(CancellationToken ct = default)
+    {
+        var lists = await http.GetFromJsonAsync<List<ItemListDto>>("api/lists", ct);
+        return lists ?? [];
+    }
+
+    public async Task<ItemListDto?> CreateListAsync(string name, string kind, CancellationToken ct = default)
+    {
+        var response = await http.PostAsJsonAsync("api/lists", new CreateListRequest(name, kind), ct);
+        return response.IsSuccessStatusCode ? await response.Content.ReadFromJsonAsync<ItemListDto>(ct) : null;
+    }
+
+    public async Task<bool> DeleteListAsync(Guid listId, CancellationToken ct = default)
+    {
+        var response = await http.DeleteAsync($"api/lists/{listId}", ct);
+        return response.IsSuccessStatusCode;
+    }
+
+    public async Task<List<ListItemDto>> GetListItemsAsync(Guid listId, CancellationToken ct = default)
+    {
+        var items = await http.GetFromJsonAsync<List<ListItemDto>>($"api/lists/{listId}/items", ct);
+        return items ?? [];
+    }
+
+    public async Task<ListItemDto?> CreateListItemAsync(Guid listId, string text, string? quantity, CancellationToken ct = default)
+    {
+        var response = await http.PostAsJsonAsync($"api/lists/{listId}/items", new ListItemWriteRequest(text, quantity, IsDone: false), ct);
+        return response.IsSuccessStatusCode ? await response.Content.ReadFromJsonAsync<ListItemDto>(ct) : null;
+    }
+
+    public async Task<bool> UpdateListItemAsync(Guid itemId, string text, string? quantity, bool isDone, CancellationToken ct = default)
+    {
+        var response = await http.PutAsJsonAsync($"api/lists/items/{itemId}", new ListItemWriteRequest(text, quantity, isDone), ct);
+        return response.IsSuccessStatusCode;
+    }
+
+    public async Task<bool> DeleteListItemAsync(Guid itemId, CancellationToken ct = default)
+    {
+        var response = await http.DeleteAsync($"api/lists/items/{itemId}", ct);
+        return response.IsSuccessStatusCode;
+    }
+
+    public async Task<List<ListShareDto>> GetListSharesAsync(Guid listId, CancellationToken ct = default)
+    {
+        var shares = await http.GetFromJsonAsync<List<ListShareDto>>($"api/lists/{listId}/share", ct);
+        return shares ?? [];
+    }
+
+    public async Task<bool> ShareListAsync(Guid listId, Guid userId, bool canWrite, CancellationToken ct = default)
+    {
+        var response = await http.PutAsJsonAsync($"api/lists/{listId}/share", new ShareListRequest(userId, canWrite), ct);
+        return response.IsSuccessStatusCode;
+    }
+
+    public async Task<bool> RevokeListShareAsync(Guid listId, Guid userId, CancellationToken ct = default)
+    {
+        var response = await http.DeleteAsync($"api/lists/{listId}/share/{userId}", ct);
+        return response.IsSuccessStatusCode;
     }
 
     private static async Task<EventWriteResult> ToWriteResultAsync(HttpResponseMessage response, CancellationToken ct)

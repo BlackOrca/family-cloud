@@ -1,0 +1,74 @@
+@* Checkable item list for one ItemList, plus an inline add-item form. Host owns loading/writes —
+   this component only renders and raises callbacks (mirrors AgendaView/EventEditForm's split). *@
+
+@if (Items.Count == 0)
+{
+    <MudAlert Severity="Severity.Info" Class="mb-3">Noch keine Einträge.</MudAlert>
+}
+else
+{
+    <MudList T="Guid" Class="mb-3">
+        @foreach (var item in Items)
+        {
+            <MudListItem T="Guid">
+                <div class="d-flex align-center">
+                    <MudCheckBox T="bool" Value="item.IsDone" Disabled="!CanWrite"
+                                 ValueChanged="@(done => OnToggle.InvokeAsync(item with { IsDone = done }))" />
+                    <div class="flex-grow-1">
+                        <MudText Style="@(item.IsDone ? "text-decoration: line-through; opacity: 0.6;" : null)">
+                            @item.Text
+                            @if (!string.IsNullOrWhiteSpace(item.Quantity))
+                            {
+                                <MudText Typo="Typo.caption" Class="ml-2" Style="display:inline;">(@item.Quantity)</MudText>
+                            }
+                        </MudText>
+                    </div>
+                    @if (CanWrite)
+                    {
+                        <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error"
+                                       OnClick="@(() => OnDelete.InvokeAsync(item))" />
+                    }
+                </div>
+            </MudListItem>
+        }
+    </MudList>
+}
+
+@if (CanWrite)
+{
+    <div class="d-flex align-center" style="gap:8px;">
+        <MudTextField T="string" @bind-Value="_newText" Label="Neuer Eintrag" Immediate="true"
+                      OnKeyUp="@(async e => { if (e.Key == "Enter") { await AddAsync(); } })" Class="flex-grow-1" />
+        @if (ShowQuantity)
+        {
+            <MudTextField T="string" @bind-Value="_newQuantity" Label="Menge" Style="max-width:120px;" />
+        }
+        <MudIconButton Icon="@Icons.Material.Filled.Add" Color="Color.Primary" OnClick="AddAsync" />
+    </div>
+}
+
+@code {
+    [Parameter] public IReadOnlyList<ListItemDto> Items { get; set; } = [];
+    [Parameter] public bool CanWrite { get; set; }
+    [Parameter] public bool ShowQuantity { get; set; }
+    [Parameter] public EventCallback<ListItemDto> OnToggle { get; set; }
+    [Parameter] public EventCallback<ListItemDto> OnDelete { get; set; }
+    [Parameter] public EventCallback<(string Text, string? Quantity)> OnAdd { get; set; }
+
+    private string _newText = "";
+    private string? _newQuantity;
+
+    private async Task AddAsync()
+    {
+        var text = _newText.Trim();
+        if (text.Length == 0)
+        {
+            return;
+        }
+
+        var quantity = string.IsNullOrWhiteSpace(_newQuantity) ? null : _newQuantity.Trim();
+        await OnAdd.InvokeAsync((text, quantity));
+        _newText = "";
+        _newQuantity = null;
+    }
+}
