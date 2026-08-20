@@ -1,0 +1,76 @@
+@page "/admin/settings"
+@attribute [Authorize]
+@using Microsoft.EntityFrameworkCore
+@using FamilyCloud.Contracts.Sync
+@using FamilyCloud.Core.Data
+@using FamilyCloud.Core.Sync
+@using FamilyCloud.Server.Services
+@inject FamilyCloudDbContext Db
+@inject AppTitleNotifier TitleNotifier
+@inject SyncEventPublisher SyncEvents
+@inject ISnackbar Snackbar
+
+<PageTitle>Einstellungen</PageTitle>
+
+<MudText Typo="Typo.h4" Class="mb-4">Einstellungen</MudText>
+
+<MudCard Class="pa-4" Elevation="2" Style="max-width:500px">
+    <MudCardContent>
+        <MudTextField T="string" @bind-Value="_title" Label="App-Name" Required="true"
+                      RequiredError="App-Name wird benötigt"
+                      HelperText="Wird in der Admin-Oberfläche und der mobilen App als Name angezeigt, z. B. 'Familie Kunst'." />
+    </MudCardContent>
+    <MudCardActions Class="px-4 pb-4">
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" Disabled="_isBusy" OnClick="SaveAsync">
+            Speichern
+        </MudButton>
+    </MudCardActions>
+</MudCard>
+
+@code {
+    private string _title = "FamilyCloud";
+    private bool _isBusy;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var existing = await Db.AppSettings.FirstOrDefaultAsync();
+        if (existing is not null)
+        {
+            _title = existing.Title;
+        }
+    }
+
+    private async Task SaveAsync()
+    {
+        var trimmed = _title.Trim();
+        if (string.IsNullOrWhiteSpace(trimmed))
+        {
+            Snackbar.Add("App-Name wird benötigt.", Severity.Error);
+            return;
+        }
+
+        _isBusy = true;
+        try
+        {
+            var existing = await Db.AppSettings.FirstOrDefaultAsync();
+            if (existing is null)
+            {
+                Db.AppSettings.Add(new() { Title = trimmed });
+            }
+            else
+            {
+                existing.Title = trimmed;
+            }
+            SyncEvents.Publish(SyncResourceType.Settings, null);
+            await Db.SaveChangesAsync();
+
+            _title = trimmed;
+            TitleNotifier.NotifyChanged();
+            Snackbar.Add("App-Name gespeichert.", Severity.Success);
+        }
+        finally
+        {
+            _isBusy = false;
+        }
+    }
+}
