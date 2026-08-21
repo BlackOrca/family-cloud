@@ -4,8 +4,11 @@
 @using FamilyCloud.Core.Data
 @using FamilyCloud.Family.Domain
 @using FamilyCloud.Server.Data
+@using FamilyCloud.Storage.OpenCloud
 @inject UserManager<AppUser> UserManager
 @inject FamilyCloudDbContext Db
+@inject IOpenCloudProvisioner OpenCloudProvisioner
+@inject ILogger<CreateUserDialog> Logger
 
 <MudDialog>
     <DialogContent>
@@ -63,6 +66,23 @@
                 JoinedUtc = DateTimeOffset.UtcNow,
             });
             await Db.SaveChangesAsync();
+
+            // Best-effort, non-fatal — unlike Radicale's lazy single-account provisioning (only
+            // triggered on a self-service password change, see MyAccount.razor), OpenCloud supports real
+            // per-user accounts, so a new user's account is provisioned right away using the password
+            // just set here, instead of leaving them without OpenCloud access until they change it
+            // themselves. A slow/unreachable OpenCloud must never block user creation itself.
+            try
+            {
+                await OpenCloudProvisioner.ProvisionUserAsync(user.Id, user.UserName!, user.Email, model.Password);
+                await Db.SaveChangesAsync();
+            }
+            catch (Exception ex)
+            {
+                Logger.LogWarning(ex,
+                    "Could not provision an OpenCloud account for {UserName} — retried automatically the next time they change their password.",
+                    user.UserName);
+            }
 
             MudDialog.Close(DialogResult.Ok(true));
         }

@@ -28,6 +28,11 @@ using FamilyCloud.Server.Components;
 using FamilyCloud.Server.Components.Account;
 using FamilyCloud.Server.Data;
 using FamilyCloud.Server.Services;
+using FamilyCloud.Storage;
+using FamilyCloud.Storage.Api;
+using FamilyCloud.Storage.Domain;
+using FamilyCloud.Storage.OpenCloud;
+using FamilyCloud.Storage.Security;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -130,6 +135,9 @@ builder.Services.AddListsFeature();
 
 var immichBaseUrl = builder.Configuration["Immich:BaseUrl"] ?? "http://immich-server:2283/";
 builder.Services.AddPhotosFeature(immichBaseUrl);
+
+var openCloudBaseUrl = builder.Configuration["OpenCloud:BaseUrl"] ?? "https://opencloud:9200/";
+builder.Services.AddStorageFeature(openCloudBaseUrl);
 
 builder.Services.AddIdentityCore<AppUser>(options =>
     {
@@ -253,6 +261,41 @@ await using (var scope = app.Services.CreateAsyncScope())
                         "until this succeeds on a later restart (retried automatically since no ImmichAccount row exists yet).");
                 }
             }
+
+            // OpenCloud, like Immich, needs a live instance to provision against — best-effort and
+            // non-fatal, mirroring Photos:ProvisionImmich exactly. Unlike Immich's freshly minted API key,
+            // the admin password is already known (it's the same value AppHost.cs gave the OpenCloud
+            // container as IDM_ADMIN_PASSWORD), so this only verifies it and mirrors the seed admin's own
+            // login into a matching OpenCloud account (see OpenCloudProvisioner and the Phase 4 roadmap).
+            if (app.Configuration.GetValue<bool?>("Storage:ProvisionOpenCloud") ?? true)
+            {
+                var openCloudAdminPassword = app.Configuration["OpenCloud:AdminPassword"];
+                if (!string.IsNullOrWhiteSpace(openCloudAdminPassword))
+                {
+                    try
+                    {
+                        var openCloudProvisioner = scope.ServiceProvider.GetRequiredService<IOpenCloudProvisioner>();
+                        await openCloudProvisioner.ProvisionServiceAccountAsync(openCloudAdminPassword);
+                        // Saved here, not just once at the end: ProvisionUserAsync's IOpenCloudClient call
+                        // reads the OpenCloudServiceAccount row back via a fresh DB query (not the change
+                        // tracker), so it has to actually be persisted first.
+                        await db.SaveChangesAsync();
+                        await openCloudProvisioner.ProvisionUserAsync(admin.Id, seedUserName, admin.Email, seedPassword);
+                        await db.SaveChangesAsync();
+                        app.Logger.LogInformation("Provisioned OpenCloud service account and managed account for {UserName}.", seedUserName);
+                    }
+                    catch (Exception ex)
+                    {
+                        app.Logger.LogWarning(ex,
+                            "Could not provision OpenCloud — the Storage feature will be unavailable until this " +
+                            "succeeds on a later restart (retried automatically since no OpenCloudServiceAccount row exists yet).");
+                    }
+                }
+                else
+                {
+                    app.Logger.LogWarning("OpenCloud:AdminPassword is not configured — the Storage feature will be unavailable.");
+                }
+            }
         }
         else
         {
@@ -291,6 +334,7 @@ app.MapFamilyEndpoints();
 app.MapCalendarEndpoints();
 app.MapListsEndpoints();
 app.MapPhotosEndpoints();
+app.MapStorageEndpoints();
 app.MapSettingsEndpoints();
 app.MapSyncEndpoints();
 

@@ -7,6 +7,7 @@ using FamilyCloud.Core.Domain;
 using FamilyCloud.Family.Domain;
 using FamilyCloud.Lists.Domain;
 using FamilyCloud.Photos.Domain;
+using FamilyCloud.Storage.Domain;
 // Aliased: this file lives under FamilyCloud.Server, and every FamilyCloud.* project is itself a
 // child namespace of FamilyCloud — so the bare names "Calendar"/"Family" resolve to those sibling
 // project namespaces (FamilyCloud.Calendar/FamilyCloud.Family), not the classes the usings above
@@ -54,6 +55,10 @@ public class FamilyCloudDbContext(DbContextOptions<FamilyCloudDbContext> options
     public DbSet<PhotoAlbumPermission> PhotoAlbumPermissions => Set<PhotoAlbumPermission>();
 
     public DbSet<ImmichAccount> ImmichAccounts => Set<ImmichAccount>();
+
+    public DbSet<OpenCloudAccount> OpenCloudAccounts => Set<OpenCloudAccount>();
+
+    public DbSet<OpenCloudServiceAccount> OpenCloudServiceAccounts => Set<OpenCloudServiceAccount>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -200,6 +205,18 @@ public class FamilyCloudDbContext(DbContextOptions<FamilyCloudDbContext> options
         builder.Entity<ImmichAccount>(e =>
         {
             e.Property(a => a.ImmichUserId).HasMaxLength(64);
+        });
+
+        builder.Entity<OpenCloudAccount>(e =>
+        {
+            e.HasIndex(a => a.UserId).IsUnique();
+            e.Property(a => a.Username).HasMaxLength(256);
+            e.Property(a => a.OpenCloudUserId).HasMaxLength(64);
+
+            e.HasOne<AppUser>()
+                .WithMany()
+                .HasForeignKey(a => a.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
     }
 }

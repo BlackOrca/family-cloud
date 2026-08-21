@@ -357,6 +357,9 @@ builder.AddProject<Projects.FamilyCloud_Server>("server")
             context.EnvironmentVariables["Radicale__HtpasswdPath"] = "/radicale-auth/users";
             context.EnvironmentVariables["Immich__BaseUrl"] = "http://immich-server:2283/";
             context.EnvironmentVariables["OpenCloud__BaseUrl"] = "https://opencloud:9200/";
+            // Same ${OPENCLOUD_ADMIN_PASSWORD} placeholder the container above got as IDM_ADMIN_PASSWORD
+            // — the server needs to know the same value to authenticate its own Graph API calls as admin.
+            context.EnvironmentVariables["OpenCloud__AdminPassword"] = "${OPENCLOUD_ADMIN_PASSWORD}";
         }
         else
         {
@@ -367,6 +370,7 @@ builder.AddProject<Projects.FamilyCloud_Server>("server")
             // and OpenCloud.
             context.EnvironmentVariables["Radicale__BaseUrl"] = "http://localhost:5232/";
             context.EnvironmentVariables["Radicale__HtpasswdPath"] = "../../.data/radicale-auth/users";
+            context.EnvironmentVariables["OpenCloud__AdminPassword"] = openCloudAdminPassword;
             context.EnvironmentVariables["Immich__BaseUrl"] = "http://localhost:2283/";
             context.EnvironmentVariables["OpenCloud__BaseUrl"] = "https://localhost:9200/";
         }

@@ -10,6 +10,7 @@
     <Project Path="src/FamilyCloud.Photos/FamilyCloud.Photos.csproj" />
     <Project Path="src/FamilyCloud.Server/FamilyCloud.Server.csproj" />
     <Project Path="src/FamilyCloud.ServiceDefaults/FamilyCloud.ServiceDefaults.csproj" />
+    <Project Path="src/FamilyCloud.Storage/FamilyCloud.Storage.csproj" />
     <Project Path="src/FamilyCloud.UI/FamilyCloud.UI.csproj" />
   </Folder>
   <Folder Name="/tests/">

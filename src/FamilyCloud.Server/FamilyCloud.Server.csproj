@@ -26,6 +26,7 @@
     <ProjectReference Include="..\FamilyCloud.Family\FamilyCloud.Family.csproj" />
     <ProjectReference Include="..\FamilyCloud.Lists\FamilyCloud.Lists.csproj" />
     <ProjectReference Include="..\FamilyCloud.Photos\FamilyCloud.Photos.csproj" />
+    <ProjectReference Include="..\FamilyCloud.Storage\FamilyCloud.Storage.csproj" />
     <ProjectReference Include="..\FamilyCloud.UI\FamilyCloud.UI.csproj" />
     <ProjectReference Include="..\FamilyCloud.ServiceDefaults\FamilyCloud.ServiceDefaults.csproj" />
     <ProjectReference Include="..\FamilyCloud.Contracts\FamilyCloud.Contracts.csproj" />

@@ -8,15 +8,18 @@
 @using FamilyCloud.Calendar.Security
 @using FamilyCloud.Core.Data
 @using FamilyCloud.Server.Data
+@using FamilyCloud.Storage.OpenCloud
 @inject UserManager<AppUser> UserManager
 @inject SignInManager<AppUser> SignInManager
 @inject AuthenticationStateProvider AuthState
 @inject FamilyCloudDbContext Db
 @inject ICalDavPasswordProtector PasswordProtector
 @inject IRadicaleCredentialProvisioner RadicaleProvisioner
+@inject IOpenCloudProvisioner OpenCloudProvisioner
 @inject IConfiguration Configuration
 @inject ISnackbar Snackbar
 @inject NavigationManager NavigationManager
+@inject ILogger<MyAccount> Logger
 
 <PageTitle>Mein Account</PageTitle>
 
@@ -62,6 +65,17 @@
     </MudButton>
 </MudPaper>
 
+<MudPaper Class="pa-4 mt-4" Elevation="2" Style="max-width: 480px;">
+    <MudText Typo="Typo.h6" Class="mb-2">Dateispeicher</MudText>
+    <MudText Typo="Typo.body2" Class="mb-2">
+        Für Files-on-Demand unter Windows den offiziellen
+        <MudLink Href="https://github.com/opencloud-eu/desktop/releases" Target="_blank">OpenCloud-Desktop-Client</MudLink>
+        installieren und mit diesem FamilyCloud-Login verbinden:
+    </MudText>
+    <MudText Typo="Typo.body2"><strong>Server:</strong> @openCloudBaseUrl</MudText>
+    <MudText Typo="Typo.body2"><strong>Benutzername:</strong> @currentUsername</MudText>
+</MudPaper>
+
 @code {
     private MudForm profileForm = default!;
     private readonly ProfileInputModel profileModel = new();
@@ -73,6 +87,9 @@
 
     [SupplyParameterFromQuery]
     private bool? PasswordChanged { get; set; }
+
+    private string openCloudBaseUrl = "";
+    private string currentUsername = "";
 
     protected override async Task OnInitializedAsync()
     {
@@ -86,7 +103,10 @@
         {
             profileModel.DisplayName = user.DisplayName;
             profileModel.Email = user.Email;
+            currentUsername = user.UserName ?? "";
         }
+
+        openCloudBaseUrl = Configuration["OpenCloud:BaseUrl"] ?? "https://opencloud:9200/";
     }
 
     private async Task<AppUser?> GetCurrentUserAsync()
@@ -177,6 +197,19 @@
             });
         }
         await Db.SaveChangesAsync();
+
+        // Keep the OpenCloud account mirroring this login in lockstep too — best-effort/non-fatal, same
+        // reasoning as the Immich/OpenCloud provisioning in Program.cs: a slow/unreachable OpenCloud must
+        // never block the user's own password change.
+        try
+        {
+            await OpenCloudProvisioner.ProvisionUserAsync(user.Id, user.UserName!, user.Email, passwordModel.NewPassword);
+            await Db.SaveChangesAsync();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Could not update the OpenCloud account for {UserName} after their password change.", user.UserName);
+        }
 
         // Changing the password rotates the security stamp; refresh the cookie so the user isn't
         // immediately signed out by their own password change. That has to happen via a full page
