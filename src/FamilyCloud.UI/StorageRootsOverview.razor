@@ -1,0 +1,33 @@
+@* Card grid over the caller's Storage roots (OpenCloud "project" Spaces). Host owns loading/creation —
+   this component only renders and raises callbacks (mirrors PhotoAlbumsOverview). No delete here: unlike
+   a PhotoAlbum, a root is an OpenCloud Space FamilyCloud.Server only creates/shares, never deletes. *@
+
+@if (Roots.Count == 0)
+{
+    <MudAlert Severity="Severity.Info">Noch keine Speicherorte vorhanden.</MudAlert>
+}
+else
+{
+    <MudGrid>
+        @foreach (var root in Roots)
+        {
+            <MudItem xs="12" sm="6">
+                <MudPaper Class="pa-4 d-flex align-center" Elevation="2" Style="cursor:pointer;" @onclick="() => OnRootClick.InvokeAsync(root)">
+                    <MudIcon Icon="@Icons.Material.Filled.Folder" Class="mr-3" Color="Color.Primary" />
+                    <div class="flex-grow-1">
+                        <MudText Typo="Typo.h6">@root.Name</MudText>
+                    </div>
+                    <div @onclick:stopPropagation="true">
+                        <MudIconButton Icon="@Icons.Material.Filled.PersonAdd" OnClick="@(() => OnShareClick.InvokeAsync(root))" />
+                    </div>
+                </MudPaper>
+            </MudItem>
+        }
+    </MudGrid>
+}
+
+@code {
+    [Parameter] public IReadOnlyList<StorageDriveInfo> Roots { get; set; } = [];
+    [Parameter] public EventCallback<StorageDriveInfo> OnRootClick { get; set; }
+    [Parameter] public EventCallback<StorageDriveInfo> OnShareClick { get; set; }
+}

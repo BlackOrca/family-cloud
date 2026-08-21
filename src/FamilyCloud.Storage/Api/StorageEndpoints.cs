@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using FamilyCloud.Contracts.Storage;
 using FamilyCloud.Contracts.Sync;
 using FamilyCloud.Core.Auth;
+using FamilyCloud.Core.Data;
 using FamilyCloud.Core.Sync;
 using FamilyCloud.Storage.Domain;
 using FamilyCloud.Storage.OpenCloud;
@@ -48,6 +49,36 @@ public static class StorageEndpoints
             await db.SaveChangesAsync();
 
             return Results.Created($"/api/storage/roots/{driveId}", new StorageRootDto(driveId, request.Name));
+        });
+
+        // Lists everyone a root is currently shared with, resolved from OpenCloud's own drive permissions
+        // back to FamilyCloud users via OpenCloudAccount — mirrors Photos'/Lists' GET .../share, even
+        // though Storage keeps no local permission table of its own (see the interface's doc-comment on
+        // IOpenCloudClient). Gated the same way as the write/revoke endpoints below.
+        group.MapGet("/roots/{driveId}/share", async (
+            string driveId, HttpContext http, DbContext db, IOpenCloudClient openCloud) =>
+        {
+            var userId = http.User.GetUserId();
+            var callerAccount = await db.Set<OpenCloudAccount>().FirstOrDefaultAsync(a => a.UserId == userId);
+            if (callerAccount is null || !await openCloud.HasManagerAccessAsync(driveId, callerAccount.OpenCloudUserId))
+            {
+                return Results.Forbid(authenticationSchemes: [JwtBearerDefaults.AuthenticationScheme]);
+            }
+
+            var permissions = await openCloud.ListPermissionsAsync(driveId);
+            var openCloudUserIds = permissions.Select(p => p.OpenCloudUserId).ToList();
+            var accounts = await (
+                from a in db.Set<OpenCloudAccount>()
+                join u in db.Set<AppUser>() on a.UserId equals u.Id
+                where openCloudUserIds.Contains(a.OpenCloudUserId)
+                select new { a.OpenCloudUserId, u.Id, u.DisplayName }
+            ).ToListAsync();
+
+            var shares = permissions
+                .Join(accounts, p => p.OpenCloudUserId, a => a.OpenCloudUserId,
+                    (p, a) => new StorageRootShareDto(a.Id, a.DisplayName, p.CanWrite))
+                .ToList();
+            return Results.Ok(shares);
         });
 
         // Sharing: grants/updates another family member's access. Gated on the caller already holding

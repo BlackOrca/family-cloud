@@ -7,6 +7,7 @@ using FamilyCloud.Contracts.Families;
 using FamilyCloud.Contracts.Lists;
 using FamilyCloud.Contracts.Photos;
 using FamilyCloud.Contracts.Settings;
+using FamilyCloud.Contracts.Storage;
 using FamilyCloud.Contracts.Sync;
 
 namespace FamilyCloud.App.Services;
@@ -237,6 +238,35 @@ internal sealed class ApiClient(HttpClient http)
     public async Task<bool> RevokePhotoAlbumShareAsync(Guid albumId, Guid userId, CancellationToken ct = default)
     {
         var response = await http.DeleteAsync($"api/photos/albums/{albumId}/share/{userId}", ct);
+        return response.IsSuccessStatusCode;
+    }
+
+    /// <summary>Where the bundled OpenCloud instance's WebDAV/Graph API live — see OpenCloudClient, which
+    /// talks to it directly rather than relaying through this ApiClient.</summary>
+    public async Task<StorageConfigDto?> GetStorageConfigAsync(CancellationToken ct = default) =>
+        await http.GetFromJsonAsync<StorageConfigDto>("api/storage/config", ct);
+
+    public async Task<StorageRootDto?> CreateStorageRootAsync(string name, CancellationToken ct = default)
+    {
+        var response = await http.PostAsJsonAsync("api/storage/roots", new CreateStorageRootRequest(name), ct);
+        return response.IsSuccessStatusCode ? await response.Content.ReadFromJsonAsync<StorageRootDto>(ct) : null;
+    }
+
+    public async Task<List<StorageRootShareDto>> GetStorageRootSharesAsync(string driveId, CancellationToken ct = default)
+    {
+        var shares = await http.GetFromJsonAsync<List<StorageRootShareDto>>($"api/storage/roots/{Uri.EscapeDataString(driveId)}/share", ct);
+        return shares ?? [];
+    }
+
+    public async Task<bool> ShareStorageRootAsync(string driveId, Guid userId, bool canWrite, CancellationToken ct = default)
+    {
+        var response = await http.PutAsJsonAsync($"api/storage/roots/{Uri.EscapeDataString(driveId)}/share", new ShareStorageRootRequest(userId, canWrite), ct);
+        return response.IsSuccessStatusCode;
+    }
+
+    public async Task<bool> RevokeStorageRootShareAsync(string driveId, Guid userId, CancellationToken ct = default)
+    {
+        var response = await http.DeleteAsync($"api/storage/roots/{Uri.EscapeDataString(driveId)}/share/{userId}", ct);
         return response.IsSuccessStatusCode;
     }
 

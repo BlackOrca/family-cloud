@@ -89,8 +89,6 @@ public class OpenCloudClient(HttpClient http, DbContext db, IOpenCloudCredential
 
     public async Task UpdatePasswordAsync(string openCloudUserId, string newPlainPassword, CancellationToken ct = default)
     {
-        // Not verified against a live instance (unlike every other call in this class) — the analogous
-        // shape to CreateUserAsync's passwordProfile, but confirm against the real Graph API on first use.
         var response = await SendAsync(HttpMethod.Patch, $"graph/v1.0/users/{openCloudUserId}",
             new UpdatePasswordRequest(new PasswordProfile(newPlainPassword)), ct);
         response.EnsureSuccessStatusCode();
@@ -144,6 +142,24 @@ public class OpenCloudClient(HttpClient http, DbContext db, IOpenCloudCredential
         var drive = await GetDriveAsync(driveId, ct);
         var permission = drive.Permissions?.FirstOrDefault(p => p.GrantedToV2?.User?.Id == openCloudUserId);
         return permission?.Roles?.Contains(managerRoleId) ?? false;
+    }
+
+    public async Task<IReadOnlyList<DrivePermissionInfo>> ListPermissionsAsync(string driveId, CancellationToken ct = default)
+    {
+        // Editor and Manager both count as "can write" for the StorageRootShareDto boolean — same
+        // simplification ShareStorageRootRequest itself makes (Viewer vs. "can write", not a 3-way pick).
+        var editorRoleId = await ResolveRoleIdAsync(StorageRole.Editor, ct);
+        var managerRoleId = await ResolveRoleIdAsync(StorageRole.Manager, ct);
+        var drive = await GetDriveAsync(driveId, ct);
+
+        return drive.Permissions?
+            .Where(p => p.GrantedToV2?.User?.Id is not null)
+            .Select(p => new DrivePermissionInfo(
+                p.Id,
+                p.GrantedToV2!.User!.Id,
+                CanWrite: (p.Roles?.Contains(editorRoleId) ?? false) || (p.Roles?.Contains(managerRoleId) ?? false)))
+            .ToList()
+            ?? [];
     }
 
     private async Task<GetDriveResponse> GetDriveAsync(string driveId, CancellationToken ct)

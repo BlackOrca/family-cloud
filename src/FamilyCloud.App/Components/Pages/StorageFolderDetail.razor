@@ -1,0 +1,149 @@
+@page "/storage/{DriveId}/{*Path}"
+
+<MudContainer MaxWidth="MaxWidth.Small" Class="mt-4">
+    <div class="d-flex align-center mb-4">
+        <MudIconButton Icon="@Icons.Material.Filled.ArrowBack" OnClick="GoBack" />
+        <MudText Typo="Typo.h5" Class="ml-2 flex-grow-1">@CurrentFolderName</MudText>
+    </div>
+
+    @if (_isLoading)
+    {
+        <div class="d-flex justify-center">
+            <MudProgressCircular Indeterminate="true" />
+        </div>
+    }
+    else if (_loadError is not null)
+    {
+        <MudAlert Severity="Severity.Error" Class="mb-2">
+            @_loadError
+            <MudButton Variant="Variant.Text" Color="Color.Inherit" Class="ml-2" OnClick="LoadEntriesAsync">Erneut versuchen</MudButton>
+        </MudAlert>
+    }
+    else
+    {
+        <StorageBrowserView Entries="_entries" OnFolderClick="OpenFolder" OnFileClick="DownloadFileAsync"
+                             OnDelete="DeleteEntryAsync" OnCreateFolder="CreateFolderAsync" OnUpload="UploadAsync" />
+    }
+</MudContainer>
+
+@code {
+    [Parameter] public string DriveId { get; set; } = "";
+    [Parameter] public string? Path { get; set; }
+
+    [Inject] private OpenCloudClient OpenCloud { get; set; } = default!;
+    [Inject] private NavigationManager Nav { get; set; } = default!;
+    [Inject] private ISnackbar Snackbar { get; set; } = default!;
+
+    private const string OpenCloudUnreachableMessage = "Dateispeicher nicht erreichbar. Bitte später erneut versuchen.";
+
+    private bool _isLoading = true;
+    private List<StorageEntry> _entries = [];
+    private string? _loadError;
+
+    private string NormalizedPath => (Path ?? "").Trim('/');
+    private string CurrentFolderName => NormalizedPath.Length == 0 ? "Dateien" : NormalizedPath.Split('/').Last();
+
+    protected override async Task OnParametersSetAsync() => await LoadEntriesAsync();
+
+    private async Task LoadEntriesAsync()
+    {
+        _isLoading = true;
+        StateHasChanged();
+        try
+        {
+            _loadError = null;
+            _entries = await OpenCloud.ListAsync(DriveId, NormalizedPath);
+        }
+        catch (Exception)
+        {
+            _loadError = OpenCloudUnreachableMessage;
+        }
+        _isLoading = false;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private void OpenFolder(StorageEntry entry) =>
+        Nav.NavigateTo($"/storage/{Uri.EscapeDataString(DriveId)}/{entry.Path}");
+
+    private void GoBack()
+    {
+        if (NormalizedPath.Length == 0)
+        {
+            Nav.NavigateTo("/storage");
+            return;
+        }
+
+        var parent = NormalizedPath.Contains('/') ? NormalizedPath[..NormalizedPath.LastIndexOf('/')] : "";
+        Nav.NavigateTo(parent.Length == 0
+            ? $"/storage/{Uri.EscapeDataString(DriveId)}"
+            : $"/storage/{Uri.EscapeDataString(DriveId)}/{parent}");
+    }
+
+    // Downloaded bytes are handed to the OS share sheet rather than written to a fixed "Downloads"
+    // location — MAUI has no cross-app-writable public folder without extra platform permissions, and
+    // Share lets the user pick Save/another app themselves. Same reasoning Windows users get for free
+    // from the official OpenCloud desktop client's Files-on-Demand (see the Phase 4 architecture roadmap).
+    private async Task DownloadFileAsync(StorageEntry entry)
+    {
+        try
+        {
+            var (bytes, contentType) = await OpenCloud.DownloadAsync(DriveId, entry.Path);
+            var cachePath = System.IO.Path.Combine(FileSystem.CacheDirectory, entry.Name);
+            await File.WriteAllBytesAsync(cachePath, bytes);
+            await Share.Default.RequestAsync(new ShareFileRequest
+            {
+                Title = entry.Name,
+                File = new ShareFile(cachePath, contentType),
+            });
+        }
+        catch (Exception)
+        {
+            Snackbar.Add(OpenCloudUnreachableMessage, Severity.Error);
+        }
+    }
+
+    private async Task DeleteEntryAsync(StorageEntry entry)
+    {
+        try
+        {
+            await OpenCloud.DeleteAsync(DriveId, entry.Path);
+            await LoadEntriesAsync();
+        }
+        catch (Exception)
+        {
+            Snackbar.Add(OpenCloudUnreachableMessage, Severity.Error);
+        }
+    }
+
+    private async Task CreateFolderAsync(string name)
+    {
+        try
+        {
+            var newPath = NormalizedPath.Length == 0 ? name : $"{NormalizedPath}/{name}";
+            await OpenCloud.CreateFolderAsync(DriveId, newPath);
+            await LoadEntriesAsync();
+        }
+        catch (Exception)
+        {
+            Snackbar.Add(OpenCloudUnreachableMessage, Severity.Error);
+        }
+    }
+
+    private async Task UploadAsync(IBrowserFile file)
+    {
+        try
+        {
+            // 200 MB cap — generous for household documents/media, just a sane upper bound so a stray
+            // huge file can't silently blow up app memory (see IBrowserFile.OpenReadStream's own
+            // maxAllowedSize parameter, which throws past this rather than truncating).
+            await using var stream = file.OpenReadStream(maxAllowedSize: 200 * 1024 * 1024);
+            var newPath = NormalizedPath.Length == 0 ? file.Name : $"{NormalizedPath}/{file.Name}";
+            await OpenCloud.UploadAsync(DriveId, newPath, stream, file.ContentType);
+            await LoadEntriesAsync();
+        }
+        catch (Exception)
+        {
+            Snackbar.Add(OpenCloudUnreachableMessage, Severity.Error);
+        }
+    }
+}

@@ -1,0 +1,75 @@
+@* One folder's contents (files + subfolders) from an OpenCloud PROPFIND listing, plus upload/new-folder
+   controls. Host owns loading and the actual WebDAV calls — this component only renders and raises
+   callbacks (mirrors PhotoGridView/ListItemsView's split). Folders navigate via OnFolderClick; files
+   download via OnFileClick — the host decides what "download" means (save/share sheet, see
+   StorageFolderDetail in FamilyCloud.App). *@
+
+@if (Entries.Count == 0)
+{
+    <MudAlert Severity="Severity.Info" Class="mb-3">Dieser Ordner ist leer.</MudAlert>
+}
+else
+{
+    <MudList T="string" Class="mb-3">
+        @foreach (var entry in Entries)
+        {
+            <MudListItem T="string" OnClick="@(() => (entry.IsFolder ? OnFolderClick : OnFileClick).InvokeAsync(entry))">
+                <div class="d-flex align-center">
+                    <MudIcon Icon="@(entry.IsFolder ? Icons.Material.Filled.Folder : Icons.Material.Filled.InsertDriveFile)" Class="mr-3" />
+                    <div class="flex-grow-1">
+                        <MudText>@entry.Name</MudText>
+                        @if (!entry.IsFolder)
+                        {
+                            <MudText Typo="Typo.caption">@FormatSize(entry.Size)</MudText>
+                        }
+                    </div>
+                    <div @onclick:stopPropagation="true">
+                        <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error"
+                                       OnClick="@(() => OnDelete.InvokeAsync(entry))" />
+                    </div>
+                </div>
+            </MudListItem>
+        }
+    </MudList>
+}
+
+<div class="d-flex align-center mb-3" style="gap:8px;">
+    <MudTextField T="string" @bind-Value="_newFolderName" Label="Neuer Ordner" Immediate="true"
+                  OnKeyUp="@(async e => { if (e.Key == "Enter") { await AddFolderAsync(); } })" Class="flex-grow-1" />
+    <MudIconButton Icon="@Icons.Material.Filled.CreateNewFolder" Color="Color.Primary" OnClick="AddFolderAsync" />
+</div>
+
+<InputFile OnChange="OnFileChangedAsync" />
+
+@code {
+    [Parameter] public IReadOnlyList<StorageEntry> Entries { get; set; } = [];
+    [Parameter] public EventCallback<StorageEntry> OnFolderClick { get; set; }
+    [Parameter] public EventCallback<StorageEntry> OnFileClick { get; set; }
+    [Parameter] public EventCallback<StorageEntry> OnDelete { get; set; }
+    [Parameter] public EventCallback<string> OnCreateFolder { get; set; }
+    [Parameter] public EventCallback<IBrowserFile> OnUpload { get; set; }
+
+    private string _newFolderName = "";
+
+    private async Task AddFolderAsync()
+    {
+        var name = _newFolderName.Trim();
+        if (name.Length == 0)
+        {
+            return;
+        }
+
+        await OnCreateFolder.InvokeAsync(name);
+        _newFolderName = "";
+    }
+
+    private async Task OnFileChangedAsync(InputFileChangeEventArgs e) => await OnUpload.InvokeAsync(e.File);
+
+    private static string FormatSize(long bytes) => bytes switch
+    {
+        < 1024 => $"{bytes} B",
+        < 1024 * 1024 => $"{bytes / 1024.0:F1} KB",
+        < 1024 * 1024 * 1024 => $"{bytes / (1024.0 * 1024):F1} MB",
+        _ => $"{bytes / (1024.0 * 1024 * 1024):F1} GB",
+    };
+}

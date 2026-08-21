@@ -1,5 +1,8 @@
 namespace FamilyCloud.Storage.OpenCloud;
 
+/// <summary>One existing grant on a drive's root, as returned by <see cref="IOpenCloudClient.ListPermissionsAsync"/>.</summary>
+public sealed record DrivePermissionInfo(string PermissionId, string OpenCloudUserId, bool CanWrite);
+
 /// <summary>Space-root sharing roles, mirroring OpenCloud's own role names ("Can view"/"Can edit"/"Can
 /// manage") — see <see cref="OpenCloudClient"/> for how these resolve to OpenCloud's internal role
 /// GUIDs.</summary>
@@ -52,6 +55,11 @@ public interface IOpenCloudClient
     /// permission id, and needs this to decide between <see cref="InviteAsync"/> and
     /// <see cref="UpdateRoleAsync"/>/<see cref="RevokeAsync"/>.</summary>
     Task<string?> FindPermissionIdAsync(string driveId, string openCloudUserId, CancellationToken ct = default);
+
+    /// <summary>Lists every existing grant on a drive's root — backs the <c>GET /api/storage/roots/{driveId}/share</c>
+    /// listing, mirroring <c>PhotoAlbumPermission</c>'s row-per-grant table even though Storage keeps no
+    /// local sharing table of its own (OpenCloud is the source of truth, see the interface doc-comment).</summary>
+    Task<IReadOnlyList<DrivePermissionInfo>> ListPermissionsAsync(string driveId, CancellationToken ct = default);
 
     /// <summary>Whether the given user holds Manager access on this drive's root. Every StorageEndpoints
     /// sharing call authenticates to OpenCloud as the admin service account (never as the caller), so

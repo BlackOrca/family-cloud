@@ -1,0 +1,41 @@
+@using System.ComponentModel.DataAnnotations
+
+<MudDialog>
+    <DialogContent>
+        <MudForm Model="@model" @ref="form">
+            <MudTextField T="string" Label="Name" @bind-Value="model.Name" Required="true" RequiredError="Pflichtfeld"
+                          HelperText="z.B. 'Dokumente' oder 'Familie'" />
+        </MudForm>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Abbrechen</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SubmitAsync">Erstellen</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter]
+    private IMudDialogInstance MudDialog { get; set; } = default!;
+
+    private MudForm form = default!;
+    private InputModel model = new();
+
+    private async Task SubmitAsync()
+    {
+        await form.ValidateAsync();
+        if (!form.IsValid)
+        {
+            return;
+        }
+
+        MudDialog.Close(DialogResult.Ok(model));
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+
+    public sealed class InputModel
+    {
+        [Required]
+        public string Name { get; set; } = "";
+    }
+}

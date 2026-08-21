@@ -33,6 +33,16 @@ public static class MauiProgram
 			})
 			.AddHttpMessageHandler<AuthTokenHandler>();
 
+		// No BaseAddress here — OpenCloudClient fetches it at runtime (api/storage/config) and builds
+		// absolute URIs itself, since it talks to OpenCloud directly rather than FamilyCloud.Server.
+		// Bundled OpenCloud only has a self-signed certificate (see AppHost.cs's OC_INSECURE), so this
+		// handler must bypass validation the same way FamilyCloud.Storage's server-side OpenCloudClient does.
+		builder.Services.AddHttpClient<OpenCloudClient>()
+			.ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler
+			{
+				ServerCertificateCustomValidationCallback = (_, _, _, _) => true,
+			});
+
 #if DEBUG
 		builder.Services.AddBlazorWebViewDeveloperTools();
 		builder.Logging.AddDebug();

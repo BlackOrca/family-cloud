@@ -1,0 +1,121 @@
+@page "/storage"
+@implements IDisposable
+
+@if (_isLoading)
+{
+    <MudContainer MaxWidth="MaxWidth.Small" Class="mt-8 d-flex justify-center">
+        <MudProgressCircular Indeterminate="true" />
+    </MudContainer>
+}
+else
+{
+    <MudContainer MaxWidth="MaxWidth.Small" Class="mt-4">
+        @if (_loadError is not null)
+        {
+            <MudAlert Severity="Severity.Error" Class="mb-2">
+                @_loadError
+                <MudButton Variant="Variant.Text" Color="Color.Inherit" Class="ml-2" OnClick="LoadRootsAsync">Erneut versuchen</MudButton>
+            </MudAlert>
+        }
+        else
+        {
+            <StorageRootsOverview Roots="_roots" OnRootClick="OpenRoot" OnShareClick="OpenShareDialogAsync" />
+        }
+    </MudContainer>
+
+    <div style="position:fixed; bottom:24px; right:24px;">
+        <MudFab Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="OpenCreateDialogAsync" />
+    </div>
+}
+
+@code {
+    [Inject] private ApiClient Api { get; set; } = default!;
+    [Inject] private OpenCloudClient OpenCloud { get; set; } = default!;
+    [Inject] private SyncCoordinator Sync { get; set; } = default!;
+    [Inject] private NavigationManager Nav { get; set; } = default!;
+    [Inject] private IDialogService DialogService { get; set; } = default!;
+    [Inject] private ISnackbar Snackbar { get; set; } = default!;
+
+    private const string ServerUnreachableMessage = "Server nicht erreichbar. Bitte später erneut versuchen.";
+    private const string OpenCloudUnreachableMessage = "Dateispeicher nicht erreichbar. Bitte später erneut versuchen.";
+
+    private bool _isLoading = true;
+    private List<StorageDriveInfo> _roots = [];
+    private string? _loadError;
+    private IDisposable? _rootsSub;
+
+    protected override async Task OnInitializedAsync()
+    {
+        // A newly created/shared root only shows up here via OpenCloud's own me/drives — SyncResourceType.Files
+        // just tells this page *when* to re-ask OpenCloud, it carries no data of its own (see StorageEndpoints).
+        _rootsSub = Sync.Subscribe(SyncResourceType.Files, _ => LoadRootsAsync());
+        await LoadRootsAsync();
+        _isLoading = false;
+    }
+
+    private async Task LoadRootsAsync()
+    {
+        try
+        {
+            _loadError = null;
+            _roots = await OpenCloud.GetMyDrivesAsync();
+        }
+        catch (Exception)
+        {
+            _loadError = OpenCloudUnreachableMessage;
+        }
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private void OpenRoot(StorageDriveInfo root) => Nav.NavigateTo($"/storage/{Uri.EscapeDataString(root.Id)}");
+
+    private async Task OpenCreateDialogAsync()
+    {
+        var dialog = await DialogService.ShowAsync<CreateStorageRootDialog>("Neuer Speicherort");
+        var result = await dialog.Result;
+        if (result is null || result.Canceled || result.Data is not CreateStorageRootDialog.InputModel input)
+        {
+            return;
+        }
+
+        try
+        {
+            var created = await Api.CreateStorageRootAsync(input.Name);
+            if (created is null)
+            {
+                Snackbar.Add("Speicherort konnte nicht erstellt werden.", Severity.Error);
+                return;
+            }
+            await LoadRootsAsync();
+        }
+        catch (Exception)
+        {
+            Snackbar.Add(ServerUnreachableMessage, Severity.Error);
+        }
+    }
+
+    private async Task OpenShareDialogAsync(StorageDriveInfo root)
+    {
+        List<FamilyMemberDto> members;
+        try
+        {
+            members = await Api.GetFamilyMembersAsync();
+        }
+        catch (Exception)
+        {
+            Snackbar.Add(ServerUnreachableMessage, Severity.Error);
+            return;
+        }
+
+        var parameters = new DialogParameters<ShareStorageRootDialog>
+        {
+            { x => x.FamilyMembers, members },
+            { x => x.LoadSharesAsync, () => Api.GetStorageRootSharesAsync(root.Id) },
+            { x => x.OnGrantAsync, (Guid userId, bool canWrite) => Api.ShareStorageRootAsync(root.Id, userId, canWrite) },
+            { x => x.OnRevokeAsync, (Guid userId) => Api.RevokeStorageRootShareAsync(root.Id, userId) },
+        };
+        await DialogService.ShowAsync<ShareStorageRootDialog>("Speicherort teilen", parameters);
+    }
+
+    public void Dispose() => _rootsSub?.Dispose();
+}

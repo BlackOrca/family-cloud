@@ -53,8 +53,8 @@
                 return;
             }
 
-            await TokenStore.SaveAsync(result.Token, result.ExpiresUtc, result.DisplayName);
-            AuthState.SetLoggedIn(result.Token, result.DisplayName);
+            await TokenStore.SaveAsync(result.Token, result.ExpiresUtc, result.DisplayName, credentials.UserName, credentials.Password);
+            AuthState.SetLoggedIn(result.Token, result.DisplayName, credentials.UserName, credentials.Password);
             Nav.NavigateTo("/", replace: true);
         }
         catch (Exception)

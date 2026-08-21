@@ -81,7 +81,7 @@ else if (AuthState.IsAuthenticated)
             var loaded = await TokenStore.LoadAsync();
             if (loaded is { } session)
             {
-                AuthState.SetLoggedIn(session.Token, session.DisplayName);
+                AuthState.SetLoggedIn(session.Token, session.DisplayName, session.UserName, session.Password);
             }
         }
 
