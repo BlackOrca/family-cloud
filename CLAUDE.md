@@ -2,6 +2,8 @@
 
 Self-hosted household calendar system: a CalDAV backend (bundled Radicale), an ASP.NET Core server (admin UI + JSON API), and a .NET MAUI Blazor Hybrid Android app.
 
+This Service should be a great and smart self-hosted service for families. We want to use smart ways like triple A devs do!
+
 ## Solution layout (`FamilyCloud.slnx`)
 
 Organized as a modular monolith: one `FamilyCloud.<Feature>` project per fachliche Domäne (Domain + Data config + API endpoints, server-only), composed together by `FamilyCloud.Server`. See the Phase 1 architecture roadmap for the full reasoning.
