@@ -46,13 +46,16 @@
 
         try
         {
-            var result = await Api.LoginAsync(credentials.UserName, credentials.Password);
-            if (result is null)
+            var outcome = await Api.LoginAsync(credentials.UserName, credentials.Password);
+            if (outcome.Response is null)
             {
-                _errorMessage = "Benutzername oder Passwort ist falsch.";
+                _errorMessage = outcome.StatusCode == System.Net.HttpStatusCode.Forbidden
+                    ? outcome.ServerMessage ?? "Anmeldung nicht möglich."
+                    : "Benutzername oder Passwort ist falsch.";
                 return;
             }
 
+            var result = outcome.Response;
             await TokenStore.SaveAsync(result.Token, result.ExpiresUtc, result.DisplayName, credentials.UserName, credentials.Password);
             AuthState.SetLoggedIn(result.Token, result.DisplayName, credentials.UserName, credentials.Password);
             Nav.NavigateTo("/", replace: true);

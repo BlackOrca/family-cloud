@@ -5,7 +5,7 @@
 @using FamilyCloud.Core.Data
 @using FamilyCloud.Server.Data
 @inject UserManager<AppUser> UserManager
-@inject FamilyCloudDbContext Db
+@inject IDbContextFactory<FamilyCloudDbContext> DbFactory
 @inject AuthenticationStateProvider AuthState
 @inject ISnackbar Snackbar
 @inject IDialogService DialogService
@@ -52,7 +52,8 @@
 
     private async Task LoadUsersAsync()
     {
-        users = await Db.Users.OrderBy(u => u.UserName).ToListAsync();
+        await using var db = await DbFactory.CreateDbContextAsync();
+        users = await db.Users.OrderBy(u => u.UserName).ToListAsync();
     }
 
     private async Task OpenCreateDialog()

@@ -16,10 +16,22 @@
 </head>
 
 <body>
-    <Routes @rendermode="InteractiveServer" />
+    <Routes @rendermode="PageRenderMode" />
     <ReconnectModal />
     <script src="@Assets["_framework/blazor.web.js"]"></script>
     <script src="_content/MudBlazor/MudBlazor.min.js"></script>
 </body>
 
 </html>
+
+@code {
+    [CascadingParameter]
+    private HttpContext HttpContext { get; set; } = default!;
+
+    // Pages marked [ExcludeFromInteractiveRouting] (the Identity Account pages — see
+    // Account/Pages/_Imports.razor) need HttpContext, which is only available during static SSR.
+    // Hard-coding InteractiveServer here would still spin up a circuit for them, which fails
+    // silently and renders NotFound instead (https://github.com/dotnet/aspnetcore/issues/65652).
+    private IComponentRenderMode? PageRenderMode =>
+        HttpContext.AcceptsInteractiveRouting() ? InteractiveServer : null;
+}

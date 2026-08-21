@@ -17,11 +17,15 @@ public static class StorageEndpoints
         var group = endpoints.MapGroup("/api/storage").RequireAuthorization("MobileApi");
 
         // FamilyCloud.App talks to OpenCloud's own WebDAV/Graph API directly for everything except root
-        // creation/sharing below — it needs to know where that lives, since it otherwise only knows
-        // FamilyCloud.Server's own base URL.
+        // creation/sharing below — it needs to know where that lives. Deliberately NOT OpenCloud:BaseUrl:
+        // that's the internal Docker-network hostname (e.g. "https://opencloud:9200/") FamilyCloud.Server
+        // itself uses to reach OpenCloud, which only resolves inside the compose/aspire network — a phone
+        // on the LAN can never reach it. OpenCloud:PublicBaseUrl is the separate, admin-configured address
+        // (mirroring how the App's own server address is entered by hand in ServerSetup.razor) that's
+        // actually reachable from wherever FamilyCloud.App runs — see .env.example.
         group.MapGet("/config", (IConfiguration configuration) =>
         {
-            var baseUrl = configuration["OpenCloud:BaseUrl"] ?? "https://opencloud:9200/";
+            var baseUrl = configuration["OpenCloud:PublicBaseUrl"] ?? configuration["OpenCloud:BaseUrl"] ?? "https://opencloud:9200/";
             return Results.Ok(new StorageConfigDto(WebDavBaseUrl: baseUrl, GraphBaseUrl: baseUrl));
         });
 

@@ -39,6 +39,14 @@ services:
     networks:
       - "aspire"
     restart: "unless-stopped"
+    healthcheck:
+      test:
+        - "CMD-SHELL"
+        - "pg_isready -U postgres"
+      interval: "5s"
+      timeout: "5s"
+      retries: 10
+      start_period: "0s"
   radicale:
     image: "tomsquest/docker-radicale:latest"
     environment:
@@ -119,6 +127,33 @@ services:
     networks:
       - "aspire"
     restart: "unless-stopped"
+  opencloud:
+    image: "opencloudeu/opencloud-rolling:7.4.0"
+    command:
+      - "-c"
+      - "opencloud init || true; opencloud server"
+    entrypoint:
+      - "/bin/sh"
+    environment:
+      OC_INSECURE: "true"
+      PROXY_ENABLE_BASIC_AUTH: "true"
+      IDM_ADMIN_PASSWORD: "${OPENCLOUD_ADMIN_PASSWORD}"
+      TZ: "Europe/Berlin"
+      OC_URL: "https://opencloud:9200"
+    ports:
+      - "9200:9200"
+    expose:
+      - "9200"
+    volumes:
+      - type: "bind"
+        target: "/etc/opencloud"
+        source: "./data/opencloud-config"
+      - type: "bind"
+        target: "/var/lib/opencloud"
+        source: "./data/opencloud-data"
+    networks:
+      - "aspire"
+    restart: "unless-stopped"
   server:
     image: "${SERVER_IMAGE}"
     environment:
@@ -140,6 +175,9 @@ services:
       Radicale__BaseUrl: "http://radicale:5232/"
       Radicale__HtpasswdPath: "/radicale-auth/users"
       Immich__BaseUrl: "http://immich-server:2283/"
+      OpenCloud__BaseUrl: "https://opencloud:9200/"
+      OpenCloud__AdminPassword: "${OPENCLOUD_ADMIN_PASSWORD}"
+      OpenCloud__PublicBaseUrl: "${OPENCLOUD_PUBLIC_BASE_URL}"
       OTEL_EXPORTER_OTLP_ENDPOINT: "http://familycloud-dashboard:18889"
       OTEL_EXPORTER_OTLP_PROTOCOL: "grpc"
       OTEL_SERVICE_NAME: "server"
@@ -160,7 +198,7 @@ services:
       immich-server:
         condition: "service_started"
       postgres:
-        condition: "service_started"
+        condition: "service_healthy"
     user: "0:0"
     networks:
       - "aspire"

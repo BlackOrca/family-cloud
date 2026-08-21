@@ -5,7 +5,7 @@
 @using FamilyCloud.Core.Sync
 @using FamilyCloud.Server.Data
 @using FamilyCloud.Server.Services
-@inject FamilyCloudDbContext Db
+@inject IDbContextFactory<FamilyCloudDbContext> DbFactory
 @inject AppTitleNotifier TitleNotifier
 @inject SyncEventPublisher SyncEvents
 @inject ISnackbar Snackbar
@@ -33,7 +33,8 @@
 
     protected override async Task OnInitializedAsync()
     {
-        var existing = await Db.AppSettings.FirstOrDefaultAsync();
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var existing = await db.AppSettings.FirstOrDefaultAsync();
         if (existing is not null)
         {
             _title = existing.Title;
@@ -52,17 +53,18 @@
         _isBusy = true;
         try
         {
-            var existing = await Db.AppSettings.FirstOrDefaultAsync();
+            await using var db = await DbFactory.CreateDbContextAsync();
+            var existing = await db.AppSettings.FirstOrDefaultAsync();
             if (existing is null)
             {
-                Db.AppSettings.Add(new() { Title = trimmed });
+                db.AppSettings.Add(new() { Title = trimmed });
             }
             else
             {
                 existing.Title = trimmed;
             }
             SyncEvents.Publish(SyncResourceType.Settings, null);
-            await Db.SaveChangesAsync();
+            await db.SaveChangesAsync();
 
             _title = trimmed;
             TitleNotifier.NotifyChanged();

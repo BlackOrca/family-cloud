@@ -6,7 +6,7 @@
 @using FamilyCloud.Calendar.Security
 @using FamilyCloud.Calendar.Sync
 @using FamilyCloud.Server.Data
-@inject FamilyCloudDbContext Db
+@inject IDbContextFactory<FamilyCloudDbContext> DbFactory
 @inject CalendarSyncService SyncService
 @inject ICalDavPasswordProtector PasswordProtector
 @inject ISnackbar Snackbar
@@ -103,13 +103,17 @@ else
     {
         // Exactly one family exists today (see Program.cs's seed flow and the Phase 1 architecture
         // roadmap) — every newly discovered/created calendar belongs to it.
-        _familyId = (await Db.Families.FirstAsync()).Id;
+        await using (var db = await DbFactory.CreateDbContextAsync())
+        {
+            _familyId = (await db.Families.FirstAsync()).Id;
+        }
         await LoadAccountsAsync();
     }
 
     private async Task LoadAccountsAsync()
     {
-        accounts = await Db.CalendarAccounts
+        await using var db = await DbFactory.CreateDbContextAsync();
+        accounts = await db.CalendarAccounts
             .Include(a => a.Calendars)
             .OrderBy(a => a.DisplayName)
             .ToListAsync();
@@ -133,8 +137,11 @@ else
             EncryptedAppPassword = PasswordProtector.Encrypt(input.Password),
             CreatedUtc = DateTimeOffset.UtcNow,
         };
-        Db.CalendarAccounts.Add(account);
-        await Db.SaveChangesAsync();
+        await using (var db = await DbFactory.CreateDbContextAsync())
+        {
+            db.CalendarAccounts.Add(account);
+            await db.SaveChangesAsync();
+        }
 
         await DiscoverAsync(account, input.Password);
         await LoadAccountsAsync();
@@ -252,8 +259,11 @@ else
             return;
         }
 
-        Db.CalendarAccounts.Remove(account);
-        await Db.SaveChangesAsync();
+        await using (var db = await DbFactory.CreateDbContextAsync())
+        {
+            db.CalendarAccounts.Remove(account);
+            await db.SaveChangesAsync();
+        }
         Snackbar.Add($"Kalenderkonto '{account.DisplayName}' gelöscht.", Severity.Success);
         await LoadAccountsAsync();
     }

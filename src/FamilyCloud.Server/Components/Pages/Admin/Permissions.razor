@@ -4,7 +4,7 @@
 @using FamilyCloud.Calendar.Domain
 @using FamilyCloud.Core.Data
 @using FamilyCloud.Server.Data
-@inject FamilyCloudDbContext Db
+@inject IDbContextFactory<FamilyCloudDbContext> DbFactory
 @inject ISnackbar Snackbar
 
 <PageTitle>Berechtigungen</PageTitle>
@@ -64,10 +64,11 @@ else
 
     protected override async Task OnInitializedAsync()
     {
-        users = await Db.Users.OrderBy(u => u.DisplayName).ToListAsync();
-        calendars = await Db.Calendars.Include(c => c.CalendarAccount).OrderBy(c => c.DisplayName).ToListAsync();
+        await using var db = await DbFactory.CreateDbContextAsync();
+        users = await db.Users.OrderBy(u => u.DisplayName).ToListAsync();
+        calendars = await db.Calendars.Include(c => c.CalendarAccount).OrderBy(c => c.DisplayName).ToListAsync();
 
-        var existing = await Db.CalendarPermissions.ToListAsync();
+        var existing = await db.CalendarPermissions.ToListAsync();
         permissions = existing.ToDictionary(p => (p.UserId, p.CalendarId));
     }
 
@@ -85,11 +86,12 @@ else
         var key = (userId, calendarId);
         permissions.TryGetValue(key, out var existing);
 
+        await using var db = await DbFactory.CreateDbContextAsync();
         if (level == NoAccess)
         {
             if (existing is not null)
             {
-                Db.CalendarPermissions.Remove(existing);
+                db.CalendarPermissions.Remove(existing);
                 permissions.Remove(key);
             }
         }
@@ -106,16 +108,17 @@ else
                     CanWrite = canWrite,
                     GrantedUtc = DateTimeOffset.UtcNow,
                 };
-                Db.CalendarPermissions.Add(existing);
+                db.CalendarPermissions.Add(existing);
                 permissions[key] = existing;
             }
             else
             {
                 existing.CanWrite = canWrite;
+                db.CalendarPermissions.Update(existing);
             }
         }
 
-        await Db.SaveChangesAsync();
+        await db.SaveChangesAsync();
         Snackbar.Add("Berechtigung gespeichert.", Severity.Success);
     }
 }

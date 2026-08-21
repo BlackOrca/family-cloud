@@ -53,6 +53,22 @@ var postgres = builder.AddPostgres("postgres")
             Source = "./data/postgres",
             Target = "/var/lib/postgresql/data",
         });
+
+        // Without this, the generated compose file's `server: depends_on: postgres:` has no health
+        // check to reference and degrades to `condition: service_started` — which only waits for the
+        // container process to start, not for Postgres to actually accept connections. That's normally
+        // masked by the existing data volume making startup near-instant, but a from-scratch volume
+        // (e.g. after `docker compose down -v`) makes initdb + Postgres's internal restart take long
+        // enough that the server's first migration query fails outright. See the matching
+        // `service.DependsOn["postgres"]` override on the server service below.
+        service.Healthcheck = new Aspire.Hosting.Docker.Resources.ServiceNodes.Healthcheck
+        {
+            Test = ["CMD-SHELL", "pg_isready -U postgres"],
+            Interval = "5s",
+            Timeout = "5s",
+            Retries = 10,
+            StartPeriod = "0s",
+        };
     });
 var familyCloudDb = postgres.AddDatabase("DefaultConnection", databaseName: "familycloud");
 
@@ -285,6 +301,12 @@ var openCloud = builder.AddContainer("opencloud", "opencloudeu/opencloud-rolling
             Source = "./data/opencloud-data",
             Target = "/var/lib/opencloud",
         });
+
+        // Like the server's 5253 mapping below: `expose`-only (the default) is only reachable from other
+        // compose services, but FamilyCloud.App talks to OpenCloud directly from wherever it runs (a
+        // phone on the LAN, not the compose network) — see OpenCloud:PublicBaseUrl on the server service
+        // and the /api/storage/config endpoint that hands this address to the App.
+        service.Ports.Add("9200:9200");
     });
 
 builder.AddProject<Projects.FamilyCloud_Server>("server")
@@ -301,6 +323,14 @@ builder.AddProject<Projects.FamilyCloud_Server>("server")
     .PublishAsDockerComposeService((_, service) =>
     {
         service.Restart = "unless-stopped";
+
+        // Pairs with the Healthcheck added to the postgres service above: without this override,
+        // Aspire's default depends_on condition here waits only for the postgres *container* to start,
+        // not for Postgres itself to be ready to accept connections.
+        service.DependsOn["postgres"] = new Aspire.Hosting.Docker.Resources.ComposeNodes.ServiceDependency
+        {
+            Condition = "service_healthy",
+        };
 
         // The generated docker-compose.yaml only `expose`s container ports by default (reachable from
         // other compose services, not the host). The server is the one thing that has to be reachable
@@ -360,6 +390,14 @@ builder.AddProject<Projects.FamilyCloud_Server>("server")
             // Same ${OPENCLOUD_ADMIN_PASSWORD} placeholder the container above got as IDM_ADMIN_PASSWORD
             // — the server needs to know the same value to authenticate its own Graph API calls as admin.
             context.EnvironmentVariables["OpenCloud__AdminPassword"] = "${OPENCLOUD_ADMIN_PASSWORD}";
+            // Unlike OpenCloud__BaseUrl above (the internal compose hostname FamilyCloud.Server itself
+            // uses), this is handed to FamilyCloud.App via /api/storage/config so it can reach OpenCloud
+            // directly — the App runs outside the compose network (a phone on the LAN), so it needs the
+            // same kind of externally-reachable address the deployer already enters by hand for the
+            // server itself in the App's own "Server-Adresse" setup screen. No sensible default exists
+            // (depends on the deployment's LAN/DNS setup), hence a blank .env placeholder like
+            // SERVER_IMAGE/SERVER_PORT above, not a computed value.
+            context.EnvironmentVariables["OpenCloud__PublicBaseUrl"] = "${OPENCLOUD_PUBLIC_BASE_URL}";
         }
         else
         {
@@ -373,6 +411,12 @@ builder.AddProject<Projects.FamilyCloud_Server>("server")
             context.EnvironmentVariables["OpenCloud__AdminPassword"] = openCloudAdminPassword;
             context.EnvironmentVariables["Immich__BaseUrl"] = "http://localhost:2283/";
             context.EnvironmentVariables["OpenCloud__BaseUrl"] = "https://localhost:9200/";
+            // Unlike OpenCloud__BaseUrl above (correct for the server process itself, which runs natively
+            // on the host here), FamilyCloud.App gets this via /api/storage/config to reach OpenCloud
+            // directly — and the app runs in the Android emulator per this project's documented dev
+            // workflow (see "Run Android app against local server" in CLAUDE.md), which reaches the host
+            // through the fixed 10.0.2.2 alias, not localhost.
+            context.EnvironmentVariables["OpenCloud__PublicBaseUrl"] = "https://10.0.2.2:9200/";
         }
     });
 

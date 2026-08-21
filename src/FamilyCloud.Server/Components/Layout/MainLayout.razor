@@ -3,7 +3,7 @@
 @using Microsoft.EntityFrameworkCore
 @using FamilyCloud.Server.Data
 @using FamilyCloud.Server.Services
-@inject FamilyCloudDbContext Db
+@inject IDbContextFactory<FamilyCloudDbContext> DbFactory
 @inject AppTitleNotifier TitleNotifier
 
 <PageTitle>@_title</PageTitle>
@@ -57,7 +57,8 @@
 
     private async Task LoadTitleAsync()
     {
-        _title = await Db.AppSettings.Select(s => s.Title).FirstOrDefaultAsync() ?? "FamilyCloud";
+        await using var db = await DbFactory.CreateDbContextAsync();
+        _title = await db.AppSettings.Select(s => s.Title).FirstOrDefaultAsync() ?? "FamilyCloud";
     }
 
     private void OnTitleChanged() => InvokeAsync(async () =>

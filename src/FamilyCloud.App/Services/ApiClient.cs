@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Text.Json;
 using FamilyCloud.Contracts.Account;
 using FamilyCloud.Contracts.Auth;
 using FamilyCloud.Contracts.Calendars;
@@ -11,6 +12,16 @@ using FamilyCloud.Contracts.Storage;
 using FamilyCloud.Contracts.Sync;
 
 namespace FamilyCloud.App.Services;
+
+/// <summary>Result of a login attempt: <see cref="Response"/> is set on success; on failure,
+/// <see cref="StatusCode"/> distinguishes wrong credentials (401, no body) from a correct login that
+/// can't be issued a token yet (403, e.g. no FamilyMember row — <see cref="ServerMessage"/> explains why).</summary>
+internal sealed record LoginOutcome(LoginResponse? Response, HttpStatusCode StatusCode, string? ServerMessage);
+
+file sealed class ProblemDetailsDto
+{
+    public string? Detail { get; set; }
+}
 
 internal sealed class ApiClient(HttpClient http)
 {
@@ -27,15 +38,22 @@ internal sealed class ApiClient(HttpClient http)
         return await http.GetFromJsonAsync<SyncChangesResponse>(query, ct);
     }
 
-    public async Task<LoginResponse?> LoginAsync(string userName, string password, CancellationToken ct = default)
+    public async Task<LoginOutcome> LoginAsync(string userName, string password, CancellationToken ct = default)
     {
         var response = await http.PostAsJsonAsync("api/auth/login", new LoginRequest(userName, password), ct);
         if (!response.IsSuccessStatusCode)
         {
-            return null;
+            // 403 (correct credentials, but no FamilyMember row) comes back as a ProblemDetails body with
+            // a human-readable Detail; 401 (wrong credentials) has no body — ServerMessage stays null.
+            var body = await response.Content.ReadAsStringAsync(ct);
+            var detail = string.IsNullOrWhiteSpace(body)
+                ? null
+                : JsonSerializer.Deserialize<ProblemDetailsDto>(body, JsonSerializerOptions.Web)?.Detail;
+            return new LoginOutcome(null, response.StatusCode, detail);
         }
 
-        return await response.Content.ReadFromJsonAsync<LoginResponse>(ct);
+        var result = await response.Content.ReadFromJsonAsync<LoginResponse>(ct);
+        return new LoginOutcome(result, response.StatusCode, null);
     }
 
     public async Task<AccountProfileDto?> GetAccountProfileAsync(CancellationToken ct = default) =>

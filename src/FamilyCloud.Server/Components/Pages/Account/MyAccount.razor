@@ -12,7 +12,7 @@
 @inject UserManager<AppUser> UserManager
 @inject SignInManager<AppUser> SignInManager
 @inject AuthenticationStateProvider AuthState
-@inject FamilyCloudDbContext Db
+@inject IDbContextFactory<FamilyCloudDbContext> DbFactory
 @inject ICalDavPasswordProtector PasswordProtector
 @inject IRadicaleCredentialProvisioner RadicaleProvisioner
 @inject IOpenCloudProvisioner OpenCloudProvisioner
@@ -176,7 +176,8 @@
         // Program.cs only ever creates this account once, for the very first admin on an empty database
         // — anyone else (or an admin whose managed account got deleted) would otherwise have no way to
         // get one, so create it here on first password change instead of silently skipping.
-        var managedAccount = await Db.CalendarAccounts.FirstOrDefaultAsync(a => a.IsManaged && a.Username == user.UserName);
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var managedAccount = await db.CalendarAccounts.FirstOrDefaultAsync(a => a.IsManaged && a.Username == user.UserName);
         await RadicaleProvisioner.ProvisionAsync(user.UserName!, passwordModel.NewPassword);
         if (managedAccount is not null)
         {
@@ -185,7 +186,7 @@
         else
         {
             var radicaleBaseUrl = Configuration["Radicale:BaseUrl"] ?? "http://radicale:5232/";
-            Db.CalendarAccounts.Add(new CalendarAccount
+            db.CalendarAccounts.Add(new CalendarAccount
             {
                 Id = Guid.NewGuid(),
                 DisplayName = "Radicale (integriert)",
@@ -196,7 +197,7 @@
                 CreatedUtc = DateTimeOffset.UtcNow,
             });
         }
-        await Db.SaveChangesAsync();
+        await db.SaveChangesAsync();
 
         // Keep the OpenCloud account mirroring this login in lockstep too — best-effort/non-fatal, same
         // reasoning as the Immich/OpenCloud provisioning in Program.cs: a slow/unreachable OpenCloud must
@@ -204,7 +205,7 @@
         try
         {
             await OpenCloudProvisioner.ProvisionUserAsync(user.Id, user.UserName!, user.Email, passwordModel.NewPassword);
-            await Db.SaveChangesAsync();
+            await db.SaveChangesAsync();
         }
         catch (Exception ex)
         {

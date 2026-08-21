@@ -4,7 +4,7 @@
 @using FamilyCloud.Core.Data
 @using FamilyCloud.Family.Domain
 @using FamilyCloud.Server.Data
-@inject FamilyCloudDbContext Db
+@inject IDbContextFactory<FamilyCloudDbContext> DbFactory
 @inject ISnackbar Snackbar
 
 <PageTitle>Familie</PageTitle>
@@ -45,9 +45,10 @@ else
 
     private async Task LoadAsync()
     {
+        await using var db = await DbFactory.CreateDbContextAsync();
         members = await (
-            from membership in Db.FamilyMembers
-            join user in Db.Users on membership.UserId equals user.Id
+            from membership in db.FamilyMembers
+            join user in db.Users on membership.UserId equals user.Id
             orderby user.DisplayName
             select new Row(user, membership)
         ).ToListAsync();
@@ -56,7 +57,9 @@ else
     private async Task SetRoleAsync(FamilyMember membership, FamilyRole role)
     {
         membership.Role = role;
-        await Db.SaveChangesAsync();
+        await using var db = await DbFactory.CreateDbContextAsync();
+        db.FamilyMembers.Update(membership);
+        await db.SaveChangesAsync();
         Snackbar.Add("Rolle gespeichert.", Severity.Success);
         // Role changes only take effect in a user's JWT on their next login — the currently
         // logged-in App/API session keeps whatever role it already has until then.

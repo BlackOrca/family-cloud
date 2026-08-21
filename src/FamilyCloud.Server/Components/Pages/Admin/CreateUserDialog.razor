@@ -6,7 +6,7 @@
 @using FamilyCloud.Server.Data
 @using FamilyCloud.Storage.OpenCloud
 @inject UserManager<AppUser> UserManager
-@inject FamilyCloudDbContext Db
+@inject IDbContextFactory<FamilyCloudDbContext> DbFactory
 @inject IOpenCloudProvisioner OpenCloudProvisioner
 @inject ILogger<CreateUserDialog> Logger
 
@@ -56,8 +56,9 @@
         {
             // Exactly one family exists today — every user is a member of it (see Program.cs's seed
             // flow for the same assumption, and the Phase 1 architecture roadmap for why).
-            var familyId = (await Db.Families.FirstAsync()).Id;
-            Db.FamilyMembers.Add(new FamilyMember
+            await using var db = await DbFactory.CreateDbContextAsync();
+            var familyId = (await db.Families.FirstAsync()).Id;
+            db.FamilyMembers.Add(new FamilyMember
             {
                 Id = Guid.NewGuid(),
                 FamilyId = familyId,
@@ -65,7 +66,7 @@
                 Role = model.IsAdmin ? FamilyRole.Admin : FamilyRole.Member,
                 JoinedUtc = DateTimeOffset.UtcNow,
             });
-            await Db.SaveChangesAsync();
+            await db.SaveChangesAsync();
 
             // Best-effort, non-fatal — unlike Radicale's lazy single-account provisioning (only
             // triggered on a self-service password change, see MyAccount.razor), OpenCloud supports real
@@ -75,7 +76,7 @@
             try
             {
                 await OpenCloudProvisioner.ProvisionUserAsync(user.Id, user.UserName!, user.Email, model.Password);
-                await Db.SaveChangesAsync();
+                await db.SaveChangesAsync();
             }
             catch (Exception ex)
             {

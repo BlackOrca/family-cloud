@@ -96,7 +96,7 @@ var connectionString = builder.Configuration.GetConnectionString("DefaultConnect
 // PostgreSQL in production; SQLite only as an explicit test-mode fallback (see
 // FamilyCloudWebApplicationFactory) so `dotnet test` doesn't need a live Postgres server.
 var useSqlite = string.Equals(builder.Configuration["Database:Provider"], "Sqlite", StringComparison.OrdinalIgnoreCase);
-builder.Services.AddDbContext<FamilyCloudDbContext>(options =>
+builder.Services.AddDbContextFactory<FamilyCloudDbContext>(options =>
 {
     if (useSqlite)
     {
@@ -104,9 +104,22 @@ builder.Services.AddDbContext<FamilyCloudDbContext>(options =>
     }
     else
     {
-        options.UseNpgsql(connectionString);
+        // Retries transient connection failures (e.g. Postgres still finishing initdb + its own
+        // internal restart on a freshly created volume) instead of crashing the startup migration
+        // outright — see the depends_on healthcheck in AppHost.cs for the docker-compose side of the
+        // same race.
+        options.UseNpgsql(connectionString, npgsql => npgsql.EnableRetryOnFailure());
     }
 });
+// Most of the app (API endpoints, feature services) wants the standard one-instance-per-request
+// scoped context, which this derives from the factory above so both share one options config.
+// Interactive Blazor Server components share a single DI scope for their whole circuit though (not
+// per-request), so components inject IDbContextFactory<FamilyCloudDbContext> directly instead and
+// create a short-lived context per operation (see Components/Pages/**) — otherwise two components
+// rendering concurrently (e.g. MainLayout's title query alongside a page's own query) throw "a second
+// operation was started on this context instance".
+builder.Services.AddScoped<FamilyCloudDbContext>(sp =>
+    sp.GetRequiredService<IDbContextFactory<FamilyCloudDbContext>>().CreateDbContext());
 // Feature-project-internal code (Calendar's sync services and endpoint handlers, etc.) can't
 // reference this concrete, composed context without a circular project reference, so it depends on
 // the abstract DbContext instead — resolved here to the same scoped instance. See the Phase 1
@@ -173,13 +186,20 @@ await using (var scope = app.Services.CreateAsyncScope())
     }
 
     var userManager = scope.ServiceProvider.GetRequiredService<UserManager<AppUser>>();
+    var seedUserName = app.Configuration["SeedAdmin:UserName"];
+    var seedPassword = app.Configuration["SeedAdmin:Password"];
+
+    // The admin user this run's best-effort Immich/OpenCloud provisioning (below) should target.
+    // Resolved either by creating it fresh (empty database) or by looking up the already-seeded admin
+    // by username — see the comment above that provisioning for why it must run independently of
+    // whether the admin user itself is new.
+    AppUser? admin = null;
+
     if (!await userManager.Users.AnyAsync())
     {
-        var seedUserName = app.Configuration["SeedAdmin:UserName"];
-        var seedPassword = app.Configuration["SeedAdmin:Password"];
         if (!string.IsNullOrWhiteSpace(seedUserName) && !string.IsNullOrWhiteSpace(seedPassword))
         {
-            var admin = new AppUser
+            admin = new AppUser
             {
                 UserName = seedUserName,
                 DisplayName = "Admin",
@@ -211,66 +231,104 @@ await using (var scope = app.Services.CreateAsyncScope())
                 Role = FamilyRole.Admin,
                 JoinedUtc = DateTimeOffset.UtcNow,
             });
+            // Saved immediately, before the best-effort Radicale provisioning below: seeding only ever
+            // runs once (gated on an empty Users table), so if it throws, the admin account must already
+            // have its family — otherwise it's permanently stuck without one.
+            await db.SaveChangesAsync();
 
             // Mirror the seed admin's credentials into the bundled Radicale instance so server<->Radicale
             // communication is actually authenticated (it ships with auth disabled otherwise), and record
             // a matching, system-managed CalendarAccount so the admin doesn't have to add it by hand.
-            var radicaleProvisioner = scope.ServiceProvider.GetRequiredService<IRadicaleCredentialProvisioner>();
-            await radicaleProvisioner.ProvisionAsync(seedUserName, seedPassword);
-
-            var passwordProtector = scope.ServiceProvider.GetRequiredService<ICalDavPasswordProtector>();
-            db.CalendarAccounts.Add(new CalendarAccount
+            // Best-effort and non-fatal — a Radicale hiccup must never leave the admin account without
+            // login access.
+            try
             {
-                Id = Guid.NewGuid(),
-                DisplayName = "Radicale (integriert)",
-                BaseUrl = radicaleBaseUrl,
-                Username = seedUserName,
-                EncryptedAppPassword = passwordProtector.Encrypt(seedPassword),
-                IsManaged = true,
-                CreatedUtc = DateTimeOffset.UtcNow,
-            });
-            await db.SaveChangesAsync();
-            app.Logger.LogInformation("Provisioned managed Radicale account and family for {UserName}.", seedUserName);
+                var radicaleProvisioner = scope.ServiceProvider.GetRequiredService<IRadicaleCredentialProvisioner>();
+                await radicaleProvisioner.ProvisionAsync(seedUserName, seedPassword);
 
-            // Immich needs a live, already-booted instance to provision against (unlike Radicale's pure
-            // file write above), so this is best-effort and non-fatal: a slow/unreachable Immich must
-            // never stop FamilyCloud itself from starting. Photos.ProvisionImmich=false lets test hosts
-            // (WebApplicationFactory, no real Immich container) skip this entirely instead of eating the
-            // provisioner's retry delay on every boot.
-            if (app.Configuration.GetValue<bool?>("Photos:ProvisionImmich") ?? true)
-            {
-                try
+                var passwordProtector = scope.ServiceProvider.GetRequiredService<ICalDavPasswordProtector>();
+                db.CalendarAccounts.Add(new CalendarAccount
                 {
-                    var immichProvisioner = scope.ServiceProvider.GetRequiredService<IImmichProvisioner>();
-                    var immichApiKey = await immichProvisioner.ProvisionAsync($"{seedUserName}@familycloud.local", seedPassword);
-
-                    var immichCredentialProtector = scope.ServiceProvider.GetRequiredService<IImmichCredentialProtector>();
-                    db.Set<ImmichAccount>().Add(new ImmichAccount
-                    {
-                        EncryptedApiKey = immichCredentialProtector.Encrypt(immichApiKey),
-                        ImmichUserId = $"{seedUserName}@familycloud.local",
-                        ProvisionedUtc = DateTimeOffset.UtcNow,
-                    });
-                    await db.SaveChangesAsync();
-                    app.Logger.LogInformation("Provisioned Immich service account.");
-                }
-                catch (Exception ex)
-                {
-                    app.Logger.LogWarning(ex,
-                        "Could not provision the Immich service account — the Photos feature will be unavailable " +
-                        "until this succeeds on a later restart (retried automatically since no ImmichAccount row exists yet).");
-                }
+                    Id = Guid.NewGuid(),
+                    DisplayName = "Radicale (integriert)",
+                    BaseUrl = radicaleBaseUrl,
+                    Username = seedUserName,
+                    EncryptedAppPassword = passwordProtector.Encrypt(seedPassword),
+                    IsManaged = true,
+                    CreatedUtc = DateTimeOffset.UtcNow,
+                });
+                await db.SaveChangesAsync();
+                app.Logger.LogInformation("Provisioned managed Radicale account and family for {UserName}.", seedUserName);
             }
-
-            // OpenCloud, like Immich, needs a live instance to provision against — best-effort and
-            // non-fatal, mirroring Photos:ProvisionImmich exactly. Unlike Immich's freshly minted API key,
-            // the admin password is already known (it's the same value AppHost.cs gave the OpenCloud
-            // container as IDM_ADMIN_PASSWORD), so this only verifies it and mirrors the seed admin's own
-            // login into a matching OpenCloud account (see OpenCloudProvisioner and the Phase 4 roadmap).
-            if (app.Configuration.GetValue<bool?>("Storage:ProvisionOpenCloud") ?? true)
+            catch (Exception ex)
             {
-                var openCloudAdminPassword = app.Configuration["OpenCloud:AdminPassword"];
-                if (!string.IsNullOrWhiteSpace(openCloudAdminPassword))
+                app.Logger.LogWarning(ex,
+                    "Could not provision the managed Radicale account — the Calendar feature will be unavailable " +
+                    "until this is configured manually, since seeding will not retry automatically.");
+            }
+        }
+        else
+        {
+            app.Logger.LogWarning(
+                "No users exist and SeedAdmin:UserName/SeedAdmin:Password are not configured — " +
+                "no admin account was created. Set them via user-secrets (dev) or environment variables (Docker).");
+        }
+    }
+    else if (!string.IsNullOrWhiteSpace(seedUserName) && !string.IsNullOrWhiteSpace(seedPassword))
+    {
+        // The admin already exists (most restarts, and any install whose Immich/OpenCloud feature was
+        // added after the admin was first seeded — the block below only ran once, when the Users table
+        // was still empty). Re-resolve it so the row-existence checks below can retry provisioning using
+        // the same still-configured seed credentials, without touching the user or family.
+        admin = await userManager.FindByNameAsync(seedUserName);
+    }
+
+    // Immich and OpenCloud need a live, already-booted instance to provision against (unlike Radicale's
+    // pure file write above), so both are best-effort and non-fatal: a slow/unreachable dependency must
+    // never stop FamilyCloud itself from starting. Each is gated on its own row not existing yet (rather
+    // than nested under the "no users" seeding above) so a feature added after the admin was already
+    // seeded — or a provisioning attempt that failed on a previous boot — actually gets retried on the
+    // next restart, as the log messages below promise.
+    if (admin is not null)
+    {
+        // Photos.ProvisionImmich=false lets test hosts (WebApplicationFactory, no real Immich container)
+        // skip this entirely instead of eating the provisioner's retry delay on every boot.
+        if ((app.Configuration.GetValue<bool?>("Photos:ProvisionImmich") ?? true)
+            && !await db.Set<ImmichAccount>().AnyAsync())
+        {
+            try
+            {
+                var immichProvisioner = scope.ServiceProvider.GetRequiredService<IImmichProvisioner>();
+                var immichApiKey = await immichProvisioner.ProvisionAsync($"{seedUserName}@familycloud.local", seedPassword!);
+
+                var immichCredentialProtector = scope.ServiceProvider.GetRequiredService<IImmichCredentialProtector>();
+                db.Set<ImmichAccount>().Add(new ImmichAccount
+                {
+                    EncryptedApiKey = immichCredentialProtector.Encrypt(immichApiKey),
+                    ImmichUserId = $"{seedUserName}@familycloud.local",
+                    ProvisionedUtc = DateTimeOffset.UtcNow,
+                });
+                await db.SaveChangesAsync();
+                app.Logger.LogInformation("Provisioned Immich service account.");
+            }
+            catch (Exception ex)
+            {
+                app.Logger.LogWarning(ex,
+                    "Could not provision the Immich service account — the Photos feature will be unavailable " +
+                    "until this succeeds on a later restart (retried automatically since no ImmichAccount row exists yet).");
+            }
+        }
+
+        // Unlike Immich's freshly minted API key, the admin password is already known (it's the same
+        // value AppHost.cs gave the OpenCloud container as IDM_ADMIN_PASSWORD), so this only verifies it
+        // and mirrors the seed admin's own login into a matching OpenCloud account (see
+        // OpenCloudProvisioner and the Phase 4 roadmap).
+        if (app.Configuration.GetValue<bool?>("Storage:ProvisionOpenCloud") ?? true)
+        {
+            var openCloudAdminPassword = app.Configuration["OpenCloud:AdminPassword"];
+            if (!string.IsNullOrWhiteSpace(openCloudAdminPassword))
+            {
+                if (!await db.Set<OpenCloudServiceAccount>().AnyAsync())
                 {
                     try
                     {
@@ -280,7 +338,7 @@ await using (var scope = app.Services.CreateAsyncScope())
                         // reads the OpenCloudServiceAccount row back via a fresh DB query (not the change
                         // tracker), so it has to actually be persisted first.
                         await db.SaveChangesAsync();
-                        await openCloudProvisioner.ProvisionUserAsync(admin.Id, seedUserName, admin.Email, seedPassword);
+                        await openCloudProvisioner.ProvisionUserAsync(admin.Id, seedUserName!, admin.Email, seedPassword!);
                         await db.SaveChangesAsync();
                         app.Logger.LogInformation("Provisioned OpenCloud service account and managed account for {UserName}.", seedUserName);
                     }
@@ -291,17 +349,29 @@ await using (var scope = app.Services.CreateAsyncScope())
                             "succeeds on a later restart (retried automatically since no OpenCloudServiceAccount row exists yet).");
                     }
                 }
-                else
+                else if (!await db.Set<OpenCloudAccount>().AnyAsync(a => a.UserId == admin.Id))
                 {
-                    app.Logger.LogWarning("OpenCloud:AdminPassword is not configured — the Storage feature will be unavailable.");
+                    // The shared service account exists but this admin's own mirrored OpenCloud login
+                    // doesn't (e.g. the service account was provisioned before this admin existed).
+                    try
+                    {
+                        var openCloudProvisioner = scope.ServiceProvider.GetRequiredService<IOpenCloudProvisioner>();
+                        await openCloudProvisioner.ProvisionUserAsync(admin.Id, seedUserName!, admin.Email, seedPassword!);
+                        await db.SaveChangesAsync();
+                        app.Logger.LogInformation("Provisioned OpenCloud managed account for {UserName}.", seedUserName);
+                    }
+                    catch (Exception ex)
+                    {
+                        app.Logger.LogWarning(ex,
+                            "Could not provision an OpenCloud account for {UserName} — retried automatically on the " +
+                            "next restart.", seedUserName);
+                    }
                 }
             }
-        }
-        else
-        {
-            app.Logger.LogWarning(
-                "No users exist and SeedAdmin:UserName/SeedAdmin:Password are not configured — " +
-                "no admin account was created. Set them via user-secrets (dev) or environment variables (Docker).");
+            else
+            {
+                app.Logger.LogWarning("OpenCloud:AdminPassword is not configured — the Storage feature will be unavailable.");
+            }
         }
     }
 }
@@ -318,6 +388,9 @@ if (!app.Environment.IsDevelopment())
 app.UseWhen(
     context => !context.Request.Path.StartsWithSegments("/api"),
     branch => branch.UseStatusCodePagesWithReExecute("/not-found", createScopeForStatusCodePages: true));
+
+app.UseAuthentication();
+app.UseAuthorization();
 
 app.UseAntiforgery();
 

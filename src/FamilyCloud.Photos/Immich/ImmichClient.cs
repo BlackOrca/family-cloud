@@ -79,10 +79,28 @@ public class ImmichClient(HttpClient http, DbContext db, IImmichCredentialProtec
 
     public async Task<ImmichAssetContent> GetAssetThumbnailAsync(string assetId, CancellationToken ct = default)
     {
-        var response = await SendAsync<object>(HttpMethod.Get, $"api/assets/{assetId}/thumbnail?size=thumbnail", body: null, ct);
-        response.EnsureSuccessStatusCode();
-        var contentType = response.Content.Headers.ContentType?.MediaType ?? "image/jpeg";
-        return new ImmichAssetContent(await response.Content.ReadAsStreamAsync(ct), contentType);
+        // Immich generates an asset's thumbnail via an async background job right after ingest, so a
+        // request made immediately after upload (the App fetches thumbnails for the whole album as soon
+        // as an upload completes) can race it and 404 even though the asset itself exists. Retried a
+        // handful of times with a short delay rather than surfaced as a hard failure — the job normally
+        // finishes within a second or two.
+        const int maxAttempts = 5;
+        for (var attempt = 1; attempt <= maxAttempts; attempt++)
+        {
+            var response = await SendAsync<object>(HttpMethod.Get, $"api/assets/{assetId}/thumbnail?size=thumbnail", body: null, ct);
+            if (response.StatusCode == System.Net.HttpStatusCode.NotFound && attempt < maxAttempts)
+            {
+                response.Dispose();
+                await Task.Delay(TimeSpan.FromSeconds(1), ct);
+                continue;
+            }
+
+            response.EnsureSuccessStatusCode();
+            var contentType = response.Content.Headers.ContentType?.MediaType ?? "image/jpeg";
+            return new ImmichAssetContent(await response.Content.ReadAsStreamAsync(ct), contentType);
+        }
+
+        throw new InvalidOperationException($"Immich thumbnail for asset {assetId} was not available after {maxAttempts} attempts.");
     }
 
     private async Task<HttpResponseMessage> SendAsync<TBody>(HttpMethod method, string requestUri, TBody? body, CancellationToken ct)
