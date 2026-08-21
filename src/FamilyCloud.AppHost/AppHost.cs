@@ -223,9 +223,79 @@ var immichServer = builder.AddContainer("immich-server", "ghcr.io/immich-app/imm
         }
     });
 
+// OpenCloud — bundled third-party file-storage backend for the Storage feature (Phase 4 architecture
+// roadmap), an unmodified image like Radicale/Immich above. Unlike Immich's single shared broker
+// account, each family member gets a real, individual OpenCloud account mirroring their FamilyCloud
+// login (see FamilyCloud.Storage's OpenCloudProvisioner) — FamilyCloud.Server only holds one
+// admin/service credential (OpenCloudServiceAccount) to provision those accounts and create/share
+// "Spaces" on the family's behalf; it never proxies file bytes itself.
+//
+// A single container is enough here — unlike Immich, OpenCloud needs no separate Postgres/Redis: its
+// built-in LDAP-backed identity store (idm) and "decomposed" (filesystem) storage driver both run
+// in-process. Verified against a real local instance: OC_URL must be https:// or the identity-provider
+// bootstrap fatally refuses to start, so OC_INSECURE=true (accept its own self-signed cert) takes the
+// place of the plain-HTTP posture used elsewhere in this project — every HttpClient that talks to this
+// container (FamilyCloud.Storage's OpenCloudClient, the Android app) must override certificate
+// validation accordingly. PROXY_ENABLE_BASIC_AUTH is off by default in the image but required here,
+// since FamilyCloud authenticates WebDAV/Graph calls with plain username+password, not OIDC.
+var openCloudAdminPassword = builder.ExecutionContext.IsPublishMode
+    ? "${OPENCLOUD_ADMIN_PASSWORD}"
+    : builder.Configuration["OpenCloud:AdminPassword"]
+        ?? throw new InvalidOperationException(
+            "OpenCloud:AdminPassword is not configured. Set it via user-secrets (dev) — this becomes the " +
+            "bundled OpenCloud instance's \"admin\" account password on its very first start only; changes " +
+            "afterwards are ignored by OpenCloud itself (see its own docs on changing the admin password).");
+
+var openCloud = builder.AddContainer("opencloud", "opencloudeu/opencloud-rolling", "7.4.0")
+    .WithEntrypoint("/bin/sh")
+    .WithArgs("-c", "opencloud init || true; opencloud server")
+    .WithHttpsEndpoint(port: 9200, targetPort: 9200, name: "https")
+    .WithEnvironment("OC_INSECURE", "true")
+    .WithEnvironment("PROXY_ENABLE_BASIC_AUTH", "true")
+    .WithEnvironment("IDM_ADMIN_PASSWORD", openCloudAdminPassword)
+    .WithEnvironment("TZ", "Europe/Berlin")
+    .WithVolume("familycloud-opencloud-config", "/etc/opencloud")
+    .WithVolume("familycloud-opencloud-data", "/var/lib/opencloud")
+    .WithEnvironment(context =>
+    {
+        // OC_URL has to be set to whatever URL clients actually reach this container by — the same
+        // aspire-run-vs-compose split as Radicale/Immich's BaseUrl below, just set directly on this
+        // resource since (unlike those) OpenCloud bakes its own public URL into its identity-provider
+        // config at first boot, not just something FamilyCloud.Server is told separately.
+        context.EnvironmentVariables["OC_URL"] = context.ExecutionContext.IsPublishMode
+            ? "https://opencloud:9200"
+            : "https://localhost:9200";
+    })
+    .PublishAsDockerComposeService((_, service) =>
+    {
+        service.Restart = "unless-stopped";
+
+        service.Volumes.Clear();
+        service.Volumes.Add(new Aspire.Hosting.Docker.Resources.ServiceNodes.Volume
+        {
+            Name = "opencloud-config",
+            Type = "bind",
+            Source = "./data/opencloud-config",
+            Target = "/etc/opencloud",
+        });
+        service.Volumes.Add(new Aspire.Hosting.Docker.Resources.ServiceNodes.Volume
+        {
+            Name = "opencloud-data",
+            Type = "bind",
+            Source = "./data/opencloud-data",
+            Target = "/var/lib/opencloud",
+        });
+    });
+
 builder.AddProject<Projects.FamilyCloud_Server>("server")
     .WaitFor(radicale)
     .WaitFor(immichServer)
+    // Deliberately no .WaitFor(openCloud): unlike Radicale/Immich, OpenCloud's HTTPS endpoint uses a
+    // self-signed certificate (see OC_INSECURE above), which makes Aspire's own auto-attached HTTP
+    // health check for WithHttpsEndpoint fail its TLS validation indefinitely — .WaitFor() would then
+    // never unblock. Not needed anyway: FamilyCloud.Storage's OpenCloudProvisioner is designed to
+    // tolerate OpenCloud not being up yet (retry with backoff), exactly like ImmichProvisioner already
+    // does for immich-server, so the server doesn't need to block its own startup on it.
     .WaitFor(familyCloudDb)
     .WithReference(familyCloudDb)
     .PublishAsDockerComposeService((_, service) =>
@@ -286,16 +356,19 @@ builder.AddProject<Projects.FamilyCloud_Server>("server")
             context.EnvironmentVariables["Radicale__BaseUrl"] = "http://radicale:5232/";
             context.EnvironmentVariables["Radicale__HtpasswdPath"] = "/radicale-auth/users";
             context.EnvironmentVariables["Immich__BaseUrl"] = "http://immich-server:2283/";
+            context.EnvironmentVariables["OpenCloud__BaseUrl"] = "https://opencloud:9200/";
         }
         else
         {
             // `aspire run`: the server runs natively on the host (not containerized), so it reaches
             // Radicale via the host port Aspire publishes for it (container DNS names like "radicale"
             // aren't resolvable outside the Docker network), and writes the htpasswd file straight to
-            // the same host path bind-mounted into Radicale's /auth above. Same reasoning for Immich.
+            // the same host path bind-mounted into Radicale's /auth above. Same reasoning for Immich
+            // and OpenCloud.
             context.EnvironmentVariables["Radicale__BaseUrl"] = "http://localhost:5232/";
             context.EnvironmentVariables["Radicale__HtpasswdPath"] = "../../.data/radicale-auth/users";
             context.EnvironmentVariables["Immich__BaseUrl"] = "http://localhost:2283/";
+            context.EnvironmentVariables["OpenCloud__BaseUrl"] = "https://localhost:9200/";
         }
     });
 
