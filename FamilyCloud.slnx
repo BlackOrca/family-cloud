@@ -20,5 +20,6 @@
     <Project Path="tests/FamilyCloud.Lists.Tests/FamilyCloud.Lists.Tests.csproj" />
     <Project Path="tests/FamilyCloud.Photos.Tests/FamilyCloud.Photos.Tests.csproj" />
     <Project Path="tests/FamilyCloud.Server.Tests/FamilyCloud.Server.Tests.csproj" />
+    <Project Path="tests/FamilyCloud.Storage.Tests/FamilyCloud.Storage.Tests.csproj" />
   </Folder>
 </Solution>
